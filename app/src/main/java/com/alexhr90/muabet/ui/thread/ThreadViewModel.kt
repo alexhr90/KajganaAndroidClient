@@ -4,6 +4,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.alexhr90.muabet.R
+import com.alexhr90.muabet.data.post.PostingRepository
+import com.alexhr90.muabet.data.post.Sent
+import com.alexhr90.muabet.domain.model.Post
+import com.alexhr90.muabet.domain.model.PostAbilities
+import com.alexhr90.muabet.domain.model.Reaction
 import com.alexhr90.muabet.data.repo.ForumRepository
 import com.alexhr90.muabet.data.repo.LibraryRepository
 import com.alexhr90.muabet.data.repo.Loaded
@@ -58,6 +63,7 @@ class ThreadViewModel @Inject constructor(
     private val reading: ReadingRepository,
     private val library: LibraryRepository,
     private val savedThreads: SavedRepository,
+    private val posting: PostingRepository,
 ) : ViewModel() {
     val initialTitle: String = saved.get<String>("title").orEmpty()
 
@@ -254,6 +260,124 @@ class ThreadViewModel @Inject constructor(
                 settle(r, tp.page.current, postId)
             }
         }
+    }
+
+    private val _reactions = MutableStateFlow<List<Reaction>?>(null)
+    /** The reactions the forum offers; null until the picker first opens. */
+    val reactions: StateFlow<List<Reaction>?> = _reactions.asStateFlow()
+
+    /** Reads the forum's reactions once, for the picker. */
+    fun loadReactions(postId: Long) {
+        if (_reactions.value != null) return
+        viewModelScope.launch { _reactions.value = posting.reactions(postId) }
+    }
+
+    /** The page on screen that holds [postId]. */
+    private fun pageOf(postId: Long): Int? = _pages.value.entries.firstOrNull { (_, s) ->
+        ((s as? UiState.Done)?.result as? Loaded.Ok)?.value?.posts?.any { it.id == postId } == true
+    }?.key
+
+    /** Replaces [post] on its page right away, before the forum's answer (undone on failure). */
+    private fun patch(postId: Long, change: (Post) -> Post): Pair<Int, ThreadPage>? {
+        val page = pageOf(postId) ?: return null
+        val tp = ((_pages.value[page] as? UiState.Done)?.result as? Loaded.Ok)?.value ?: return null
+        // A post whose action bar could not be read has no abilities: keep the assumed ones the screen shows.
+        val assumed = { p: Post -> if (p.can == PostAbilities.None) p.copy(can = PostAbilities(react = true, quote = true, bookmark = true)) else p }
+        _pages.value = _pages.value + (page to UiState.Done(Loaded.Ok(tp.copy(posts = tp.posts.map { if (it.id == postId) change(assumed(it)) else it }))))
+        return page to tp
+    }
+
+    private fun restore(saved: Pair<Int, ThreadPage>?) {
+        saved ?: return
+        _pages.value = _pages.value + (saved.first to UiState.Done(Loaded.Ok(saved.second)))
+    }
+
+    /** Gives [reactionId] to the post, or takes it back when it is already the visitor's. */
+    fun react(post: Post, reactionId: Int) {
+        val taking = post.can.myReactionId == reactionId
+        val before = patch(post.id) { it.copy(can = it.can.copy(myReactionId = if (taking) null else reactionId)) }
+        viewModelScope.launch {
+            val r = posting.react(post.id, reactionId)
+            if (r is Sent.Ok) {
+                // The forum's own summary (names, counts) comes with the page.
+                before?.first?.let { load(it, keepOnFailure = true) }
+            } else {
+                restore(before)
+                report(r)
+            }
+        }
+    }
+
+    fun toggleBookmark(post: Post) {
+        val remove = post.can.bookmarked
+        val before = patch(post.id) { it.copy(can = it.can.copy(bookmarked = !remove)) }
+        viewModelScope.launch {
+            val r = posting.bookmark(post.id, remove)
+            if (r is Sent.Ok) _messages.tryEmit(UiMessage(if (remove) R.string.msg_bookmark_removed else R.string.msg_bookmarked)) else {
+                restore(before)
+                report(r)
+            }
+        }
+    }
+
+    fun toggleWatch() {
+        val info = ((_info.value as? UiState.Done)?.result as? Loaded.Ok)?.value ?: return
+        val stop = info.watched
+        _info.value = UiState.Done(Loaded.Ok(info.copy(watched = !stop)))
+        viewModelScope.launch {
+            val r = posting.watch(info.slug, info.threadId, stop)
+            if (r is Sent.Ok) _messages.tryEmit(UiMessage(if (stop) R.string.msg_unwatched else R.string.msg_watching)) else {
+                val now = ((_info.value as? UiState.Done)?.result as? Loaded.Ok)?.value
+                if (now != null) _info.value = UiState.Done(Loaded.Ok(now.copy(watched = stop)))
+                report(r)
+            }
+        }
+    }
+
+    fun delete(post: Post, reason: String) {
+        viewModelScope.launch {
+            val r = posting.delete(post.id, reason)
+            if (r is Sent.Ok) {
+                _messages.tryEmit(UiMessage(R.string.msg_post_deleted))
+                pageOf(post.id)?.let { load(it, keepOnFailure = true) }
+            } else {
+                report(r)
+            }
+        }
+    }
+
+    fun reportPost(post: Post, reason: String) {
+        viewModelScope.launch {
+            val r = posting.report(post.id, reason)
+            if (r is Sent.Ok) _messages.tryEmit(UiMessage(R.string.msg_reported)) else report(r)
+        }
+    }
+
+    /** Says why a quick action (reaction, bookmark, watch…) did not go through. */
+    private fun report(r: Sent) {
+        if (r is Sent.Refused && r.errors.isNotEmpty()) {
+            _errors.tryEmit(r.errors.joinToString("\n"))
+            return
+        }
+        _messages.tryEmit(
+            UiMessage(
+                when (r) {
+                    Sent.Offline -> R.string.msg_action_offline
+                    Sent.NeedsLogin -> R.string.compose_needs_login
+                    is Sent.Blocked -> R.string.error_blocked_title
+                    else -> R.string.msg_action_failed
+                },
+            ),
+        )
+    }
+
+    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    /** The forum's own words when it refused a quick action. */
+    val errors: SharedFlow<String> = _errors.asSharedFlow()
+
+    /** A short message in the screen's message bar. */
+    fun say(text: Int) {
+        _messages.tryEmit(UiMessage(text))
     }
 
     fun toggleMute() {

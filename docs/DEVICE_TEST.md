@@ -47,3 +47,27 @@ Background and polish
 17. Settings → Backup: export lists to a file, delete a pin and a mute, import the file: they come back.
 18. TalkBack: tabs, rows, post menus and the page bar read sensible labels; every control is reachable.
 19. Languages: Macedonian, German and Russian show no English leftovers on the new screens.
+
+## v1.1.0 (fully native)
+
+Content
+1. Open threads with YouTube links and embeds: each shows its thumbnail; tap plays it inside the post; the player's full-screen button fills the screen sideways; Back leaves full screen. "Open in YouTube" opens the YouTube app.
+2. Other media: a Vimeo, Dailymotion or Streamable video plays in place; Spotify and SoundCloud show "Listen here" and a small player; an X, Instagram or TikTok post opens in its app (or "Show here").
+3. A video attachment plays in place; the full-screen button continues where it was. A PDF or other file attachment downloads with a notification.
+4. Tables, "Info" or hidden-content boxes and link previews (with picture and description) look native. No post anywhere shows "Part of this post opens on the forum" any more; if something still looks wrong, note the thread.
+
+Writing
+5. Reply (top bar, end of the last page): the compose screen opens with the keyboard. Use bold, a link and a spoiler from the tool row, add a photo, send: the thread jumps to your post with the photo.
+6. Quote (under a post, or its menu): the quote arrives filled in; send.
+7. Leave the compose screen without sending, come back to the same reply: the draft is still there.
+8. Edit one of your posts from its menu: the text arrives as BB code; change it and send; the thread title (if it is the first post) is unchanged.
+9. React from the button under a post: pick a reaction; tap your reaction again to take it back. Bookmark and remove the bookmark from the menu; Watch and Unwatch from the thread's menu.
+10. New thread from a forum's top bar: title and text; it opens the new thread.
+11. Delete one of your posts (with a reason), and report a post: both confirm in the message bar.
+12. Try sending an empty reply, and a reply in airplane mode: the screen explains, nothing is lost.
+
+Messages and profiles
+13. Alerts → the envelope (with a badge when unread) or Settings → Direct messages: the conversations list; open one, read, Reply; New message to a member.
+14. Tap a member's name → Open profile: the profile is native (picture, title, figures, Message, Posts).
+15. Settings → Bookmarks lists your bookmarks natively.
+16. Log out: drafts are gone afterwards.

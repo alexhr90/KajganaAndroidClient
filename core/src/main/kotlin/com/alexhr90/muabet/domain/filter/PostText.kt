@@ -16,6 +16,12 @@ object PostText {
                 is Block.Code -> appendLine(b.text)
                 is Block.Link -> appendLine(b.title ?: b.url)
                 is Block.Embed -> appendLine(b.url)
+                is Block.Table -> b.rows.forEach { row -> row.forEach { append(it.blocks, includeQuotes) } }
+                is Block.Box -> {
+                    b.title?.let { appendLine(it) }
+                    append(b.blocks, includeQuotes)
+                }
+                is Block.File -> appendLine(b.name)
                 is Block.Image, is Block.Unknown -> Unit
             }
         }

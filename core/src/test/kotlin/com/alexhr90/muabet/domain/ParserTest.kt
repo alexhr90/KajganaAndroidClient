@@ -1,6 +1,7 @@
 package com.alexhr90.muabet.domain
 
 import com.alexhr90.muabet.domain.model.Block
+import com.alexhr90.muabet.domain.model.EmbedKind
 import com.alexhr90.muabet.domain.parse.BbContent
 import com.alexhr90.muabet.domain.parse.ForumParser
 import com.alexhr90.muabet.domain.parse.HomeParser
@@ -163,13 +164,16 @@ class ParserTest {
         val embed = body[4] as Block.Embed
         assertEquals("youtube", embed.site)
         assertEquals("https://www.youtube.com/watch?v=abcdefghijk", embed.url)
+        assertEquals(EmbedKind.YouTube, embed.kind)
+        assertEquals("abcdefghijk", embed.mediaId)
 
         val list = body[5] as Block.ListBlock
         assertEquals(2, list.items.size)
         assertFalse(list.ordered)
 
-        assertEquals(Block.Unknown("table"), body[6])
-        assertTrue(post.hasUnknown)
+        val table = body[6] as Block.Table
+        assertEquals("а", ((table.rows.single().single().blocks.single()) as Block.Paragraph).runs.single().text)
+        assertFalse(post.hasUnknown)
 
         val attachment = body[7] as Block.Image
         assertEquals("https://forum.kajgana.com/data/attachments/0/77-thumb.jpg", attachment.url)

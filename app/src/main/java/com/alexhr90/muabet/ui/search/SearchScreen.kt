@@ -115,7 +115,7 @@ fun SearchScreen(onBack: () -> Unit, viewModel: SearchViewModel = hiltViewModel(
 }
 
 @Composable
-private fun ResultRow(r: SearchResult, onClick: () -> Unit) {
+internal fun ResultRow(r: SearchResult, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Column(
             Modifier

@@ -169,9 +169,28 @@ data class Post(
     val reactions: ReactionSummary?,
     /** True when the forum marks the post as new for the logged-in visitor. */
     val unread: Boolean = false,
+    /** What the visitor may do with the post, as its action bar shows. */
+    val can: PostAbilities = PostAbilities.None,
 ) {
     /** True when part of the body could not be shown natively: offer "Open on the forum". */
     val hasUnknown: Boolean get() = body.any { it.containsUnknown() }
+}
+
+/** The post's action bar: what the logged-in visitor may do, and their own reaction. */
+data class PostAbilities(
+    val react: Boolean = false,
+    val quote: Boolean = false,
+    val edit: Boolean = false,
+    val delete: Boolean = false,
+    val report: Boolean = false,
+    val bookmark: Boolean = false,
+    val bookmarked: Boolean = false,
+    /** The reaction the visitor gave, or null. */
+    val myReactionId: Int? = null,
+) {
+    companion object {
+        val None = PostAbilities()
+    }
 }
 
 data class PostAuthor(
@@ -213,15 +232,54 @@ sealed interface Block {
     data class Paragraph(val runs: List<Run>) : Block
     data class Quote(val author: String?, val postId: Long?, val blocks: List<Block>) : Block
     data class Image(val url: String, val alt: String?, val link: String?) : Block
-    /** A standalone link preview (an "unfurl"). */
-    data class Link(val url: String, val title: String?) : Block
-    data class Embed(val site: String?, val url: String) : Block
+    /** A link preview (an "unfurl"), with the page's title, description and picture when given. */
+    data class Link(val url: String, val title: String?, val description: String? = null, val image: String? = null) : Block
+    /**
+     * Embedded media: a video, a song, a post on a social site. [url] is the page to open in the
+     * site's own app; [frameUrl] is the player the forum embeds, played in place when there is one.
+     */
+    data class Embed(
+        val site: String?,
+        val url: String,
+        val kind: EmbedKind = EmbedKind.Link,
+        /** The site's id for the item (a YouTube video id), when known. */
+        val mediaId: String? = null,
+        val frameUrl: String? = null,
+        val thumbnail: String? = null,
+    ) : Block
     data class Spoiler(val title: String?, val blocks: List<Block>) : Block
     data class Code(val text: String) : Block
     data class ListBlock(val ordered: Boolean, val items: List<List<Block>>) : Block
-    /** Something the app does not render yet; [kind] says what, for the fallback label. */
-    data class Unknown(val kind: String) : Block
+    /** A table: rows of cells, each cell its own blocks. */
+    data class Table(val rows: List<List<TableCell>>) : Block
+    /** A titled box the forum draws around content ("Info", "Hide", an add-on's block). */
+    data class Box(val title: String?, val blocks: List<Block>) : Block
+    /** An attached file that is not a picture. */
+    data class File(val name: String, val url: String, val meta: String?) : Block
+    /**
+     * Something the app has no native view for. [html] is the forum's own markup for it, shown in
+     * place by a small web view, so nothing ever needs a trip to the forum.
+     */
+    data class Unknown(val kind: String, val html: String? = null) : Block
 }
+
+/** What an embed is, which decides how it plays. */
+enum class EmbedKind {
+    /** A YouTube video: thumbnail, then the player in place. */
+    YouTube,
+    /** A video file (an attachment, an mp4 link): the system player in place. */
+    VideoFile,
+    /** Another video player (Vimeo, Dailymotion, Streamable…): played in place in its frame. */
+    Video,
+    /** A music player (Spotify, SoundCloud…): a short frame in place. */
+    Audio,
+    /** A post on a social site (X, Instagram, TikTok, Facebook, Reddit…): a card, opened in its app. */
+    Social,
+    /** Anything else with only an address. */
+    Link,
+}
+
+data class TableCell(val blocks: List<Block>, val header: Boolean = false)
 
 /** A run of text with one style. */
 data class Run(
@@ -237,9 +295,74 @@ data class Run(
 }
 
 fun Block.containsUnknown(): Boolean = when (this) {
-    is Block.Unknown -> true
+    is Block.Unknown -> html == null
     is Block.Quote -> blocks.any { it.containsUnknown() }
     is Block.Spoiler -> blocks.any { it.containsUnknown() }
     is Block.ListBlock -> items.any { item -> item.any { it.containsUnknown() } }
+    is Block.Box -> blocks.any { it.containsUnknown() }
+    is Block.Table -> rows.any { row -> row.any { cell -> cell.blocks.any { it.containsUnknown() } } }
     else -> false
+}
+
+/** A reaction the forum offers (Like, Love…), with its picture when the forum has one. */
+data class Reaction(val id: Int, val name: String, val imageUrl: String? = null)
+
+/** A direct message conversation in the list. */
+data class ConversationSummary(
+    val id: Long,
+    val slug: String,
+    val title: String,
+    val url: String,
+    val participants: List<String>,
+    val startedBy: String?,
+    val replies: Int?,
+    /** Epoch seconds. */
+    val lastMessageAt: Long?,
+    val lastSender: String?,
+    val unread: Boolean,
+)
+
+data class ConversationList(
+    val conversations: List<ConversationSummary>,
+    val page: PageInfo,
+    val session: SessionInfo,
+    val nextUrl: String?,
+)
+
+/** One page of a conversation: its messages are rendered like posts. */
+data class ConversationPage(
+    val id: Long,
+    val slug: String,
+    val title: String,
+    val participants: List<String>,
+    val messages: List<Post>,
+    val page: PageInfo,
+    val session: SessionInfo,
+    val canReply: Boolean,
+)
+
+/** A member's profile page. */
+data class MemberProfile(
+    val id: Long,
+    val slug: String,
+    val name: String,
+    val avatarUrl: String?,
+    val title: String?,
+    /** The banner lines under the name (joined, last seen, location…). */
+    val blurb: List<String>,
+    /** Label and value pairs (messages, reaction score, points…). */
+    val stats: List<Pair<String, String>>,
+    val about: List<Block>,
+    val canMessage: Boolean,
+    val session: SessionInfo,
+)
+
+/** What the forum answered to a form sent by the app (a reply, a reaction, an upload…). */
+sealed interface FormResult {
+    /** Done; [redirect] is where the forum would go next (the new post), [data] its other fields. */
+    data class Ok(val redirect: String?, val message: String?, val data: Map<String, String> = emptyMap()) : FormResult
+    /** The forum refused, with its own words (flood control, a missing title, no permission…). */
+    data class Refused(val errors: List<String>) : FormResult
+    /** The session's form token expired: fetch a page and try once more. */
+    data object TokenExpired : FormResult
 }

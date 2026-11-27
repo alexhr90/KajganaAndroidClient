@@ -11,10 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
 import okhttp3.CookieJar
+import okhttp3.FormBody
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.Semaphore
@@ -129,7 +134,67 @@ class ForumFetcher @Inject constructor(private val client: OkHttpClient) {
         }
     }
 
+    /**
+     * A forum page asked for as JSON (`_xfResponseType=json`), as the forum's own scripts do for
+     * overlays: the edit form, the reaction picker. The answer's HTML is in `html.content`.
+     */
+    suspend fun getJson(url: String): FetchResult {
+        val u = url.toHttpUrlOrNull()?.newBuilder()?.addQueryParameter("_xfResponseType", "json")?.build()?.toString() ?: url
+        return call(Request.Builder().url(u).header("Accept", "application/json, text/javascript, */*; q=0.01").header("X-Requested-With", "XMLHttpRequest").build())
+    }
+
+    /**
+     * Sends a form as the forum's own pages do with JavaScript: `X-Requested-With` and the fields
+     * the caller gives (which include `_xfToken` and `_xfResponseType=json`). With [upload] the body
+     * is multipart. XenForo answers errors with 400 and JSON, which comes back as a [FetchResult.Page].
+     */
+    suspend fun send(url: String, fields: List<Pair<String, String>>, upload: Upload? = null): FetchResult {
+        val body = if (upload == null) {
+            FormBody.Builder().apply { fields.forEach { (k, v) -> add(k, v) } }.build()
+        } else {
+            MultipartBody.Builder().setType(MultipartBody.FORM).apply {
+                fields.forEach { (k, v) -> addFormDataPart(k, v) }
+                addFormDataPart(upload.field, upload.fileName, upload.bytes.toRequestBody(upload.mime.toMediaTypeOrNull()))
+            }.build()
+        }
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Origin", ForumUrls.BASE)
+            .header("Referer", ForumUrls.home)
+            .build()
+        return call(request)
+    }
+
+    private suspend fun call(request: Request): FetchResult = withContext(Dispatchers.IO) {
+        val url = request.url.toString()
+        try {
+            client.newCall(request).execute().use { response ->
+                val finalUrl = response.request.url.toString()
+                val body = response.body?.let { b ->
+                    val source = b.source()
+                    source.request(MAX_BYTES)
+                    source.buffer.clone().readUtf8()
+                }.orEmpty()
+                val json = body.trimStart().startsWith("{")
+                val kind = if (json) BlockKind.None else BlockDetector.classify(response.code, body)
+                when {
+                    kind != BlockKind.None -> FetchResult.Blocked(finalUrl, kind, response.code)
+                    json || response.isSuccessful -> FetchResult.Page(finalUrl, response.code, body)
+                    else -> FetchResult.HttpError(finalUrl, response.code)
+                }
+            }
+        } catch (e: IOException) {
+            FetchResult.NetworkError(url, e.message)
+        }
+    }
+
     private companion object {
         const val MAX_BYTES = 6L * 1024 * 1024
     }
 }
+
+/** A file sent with a form: a photo for a post. */
+class Upload(val field: String, val fileName: String, val mime: String, val bytes: ByteArray)

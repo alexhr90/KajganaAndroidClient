@@ -4,13 +4,15 @@ A personal, **unofficial** Android client for [forum.kajgana.com](https://forum.
 
 ## Status
 
-**v1.0.0 (M1 to M4)**, the complete app, waiting for the owner's phone test. See `PLAN.md` for the milestones and `docs/DEVICE_TEST.md` for what to check.
+**v1.1.0**, the native release: everything in a post shows in the app and all writing happens in the app. See `PLAN.md` for the milestones and `docs/DEVICE_TEST.md` for what to check.
 
 - **Forums:** the live categories and forums in compact rows; pin favourites to the top and reorder them, hide forums (with Undo), fold categories (remembered).
 - **Forum:** subforums, pinned threads folded into one row, infinite scroll, pull to refresh, a "… p." shortcut to the last page, New thread. Long-press a thread for first or last page, share, copy link, mute.
-- **Thread:** swipe between pages; the page bar and a jump sheet open any page of a 1,000+ page thread; the position (page and post) is remembered per thread. Each post is a card: the name opens the member card (profile, message, posts), the menu quotes, reacts, bookmarks, copies and shares. Collapsed quotes, spoilers, members' images (tap to zoom, or load on tap), link previews, embeds, code, lists and reactions; anything else offers "Open on the forum".
+- **Thread:** swipe between pages; the page bar and a jump sheet open any page of a 1,000+ page thread; the position (page and post) is remembered per thread. Each post is a card: the name opens the member card (profile, message, posts); under the post, React and Quote; the menu also bookmarks, edits, deletes, reports, copies and shares. Collapsed quotes, spoilers, members' images (tap to zoom, or load on tap), link previews with picture and description, tables, titled boxes, attached files (downloaded with the session), code, lists and reactions.
+- **Media in place:** YouTube, Vimeo, Dailymotion and Streamable play inside the post (full screen from the player), Spotify and SoundCloud in a small player, video attachments in the system player; posts from X, Instagram, TikTok, Facebook and Reddit open in their own app (or show in place). Anything else the forum draws is rendered in place in the app's colours.
 - **New, Watched, Alerts:** native lists with endless scroll; unread threads open at the first unread post; an unread badge on Alerts.
-- **Posting:** reply, quote, react, watch, bookmark, new thread and direct messages on the forum's own forms in the app, returning to the thread at your post.
+- **Writing, native:** reply, quote, new thread, edit, and direct messages on one compose screen with BB code tools (bold, italic, link, image, quote, spoiler, code, list) and photos from the photo picker (no permission). Drafts are kept until sent. Reactions, bookmarks, watching, delete and report are one tap, with the forum's own words when it says no.
+- **Direct messages and profiles:** the conversations list, conversations, New message, member profiles and your bookmarks are native screens.
 - **Search:** the whole forum (all or titles only), one thread, or a member's posts.
 - **Mutes:** mute threads and words; muted threads leave every list, posts with a muted word fold to one line.
 - **Offline:** save chosen pages of a thread; they open without a connection.
@@ -31,7 +33,7 @@ Download `Muabet-v<version>.apk` from [Releases](https://github.com/alexhr90/Kaj
 
 The app builds on GitHub Actions (JDK 17, Gradle 8.14.3). Locally: `./gradlew assembleDebug` with the Android SDK installed. `:core` is plain Kotlin and its tests run anywhere (`AGENTS.md` → Testing).
 
-Project layout: `:core` (forum models, URL routes, HTML parsers, mute rules, politeness rules, JVM tests with synthetic fixtures) and `:app` (Compose UI, WebView login and forms, OkHttp cookie bridge, Room, WorkManager, widget, design system). Details in `AGENTS.md`.
+Project layout: `:core` (forum models, URL routes, HTML parsers, mute rules, politeness rules, JVM tests with synthetic fixtures) and `:app` (Compose UI, WebView login, native posting, OkHttp cookie bridge, Room, WorkManager, widget, design system). Details in `AGENTS.md`.
 
 Strings live in `tools/strings.py` for all four languages; run `python3 tools/strings.py` to regenerate the `strings.xml` files.
 

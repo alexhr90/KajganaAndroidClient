@@ -44,6 +44,7 @@ class SessionRepository @Inject constructor(
     private val forum: ForumRepository,
     private val watched: WatchedCacheDao,
     private val notifications: Notifications,
+    private val drafts: com.alexhr90.muabet.data.post.DraftStore,
     @ApplicationContext private val context: Context,
 ) {
     fun cookieNames(): List<String> = cookies.cookieNames()
@@ -83,5 +84,7 @@ class SessionRepository @Inject constructor(
         runCatching { watched.clear() }
         WatchedWidget.refreshAll(context)
         notifications.clearAlerts()
+        // Unsent drafts belong to the account that wrote them.
+        runCatching { drafts.clearAll() }
     }
 }

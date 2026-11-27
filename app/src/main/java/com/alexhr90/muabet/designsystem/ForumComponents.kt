@@ -26,14 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.SentimentDissatisfied
 import androidx.compose.material.icons.outlined.SentimentVerySatisfied
@@ -41,7 +42,6 @@ import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -251,6 +251,12 @@ data class PostActions(
     val onOpenOnForum: () -> Unit,
     val onAuthor: (PostAuthor) -> Unit = {},
     val onMore: (Post) -> Unit = {},
+    /** Downloads an attached file with the session. */
+    val onDownload: (url: String, name: String) -> Unit = { url, _ -> onLink(url) },
+    /** Opens the reaction picker for the post; null hides the button. */
+    val onReact: ((Post) -> Unit)? = null,
+    /** Quotes the post in a reply; null hides the button. */
+    val onQuote: ((Post) -> Unit)? = null,
 )
 
 /**
@@ -321,21 +327,32 @@ fun PostItem(
         Column(Modifier.padding(end = Space.m)) {
             Spacer(Modifier.height(Space.xs))
             BlockList(post.body, actions)
-            if (post.hasUnknown) {
-                Text(
-                    stringResource(R.string.post_partly_unsupported),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clip(MaterialTheme.shapes.small)
-                        .clickable(onClick = actions.onOpenOnForum, role = Role.Button)
-                        .heightIn(min = 48.dp)
-                        .padding(vertical = Space.m),
-                )
-            }
-            post.reactions?.let {
-                Spacer(Modifier.height(Space.m))
-                ReactionSummaryRow(it, onClick = it.listUrl?.let { url -> { actions.onLink(url) } })
+            val canReact = actions.onReact != null && post.can.react
+            val canQuote = actions.onQuote != null && post.can.quote
+            if (post.reactions != null || canReact || canQuote) {
+                Spacer(Modifier.height(Space.s))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        post.reactions?.let {
+                            ReactionSummaryRow(it, onClick = it.listUrl?.let { url -> { actions.onLink(url) } })
+                        }
+                    }
+                    if (canReact) {
+                        val mine = post.can.myReactionId
+                        IconButton(onClick = { actions.onReact?.invoke(post) }) {
+                            Icon(
+                                if (mine != null) reactionIcon(mine, null) else Icons.Outlined.AddReaction,
+                                contentDescription = stringResource(if (mine != null) R.string.cd_change_reaction else R.string.action_react),
+                                tint = if (mine != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (canQuote) {
+                        IconButton(onClick = { actions.onQuote?.invoke(post) }) {
+                            Icon(Icons.Outlined.FormatQuote, contentDescription = stringResource(R.string.action_quote), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
         }
     }
@@ -483,12 +500,11 @@ private fun BlockView(block: Block, actions: PostActions) {
         )
         is Block.Quote -> QuoteBlock(block.author, block.blocks, actions)
         is Block.Image -> PostImage(block, actions)
-        is Block.Link -> LinkLine(block.title ?: block.url, hostOf(block.url), Icons.Rounded.Link) { actions.onLink(block.url) }
-        is Block.Embed -> LinkLine(
-            embedLabel(block.site),
-            hostOf(block.url),
-            Icons.Outlined.PlayCircle,
-        ) { actions.onLink(block.url) }
+        is Block.Link -> LinkCard(block, actions)
+        is Block.Embed -> EmbedBlock(block, actions)
+        is Block.Table -> TableBlock(block, actions)
+        is Block.Box -> BoxBlock(block, actions)
+        is Block.File -> FileBlock(block, actions)
         is Block.Spoiler -> SpoilerBlock(block.title, block.blocks, actions)
         is Block.Code -> Text(
             block.text,
@@ -513,7 +529,8 @@ private fun BlockView(block: Block, actions: PostActions) {
                 }
             }
         }
-        is Block.Unknown -> Unit // The post shows one "open on the forum" line for all of these.
+        // The forum's own markup, drawn in place; nothing is left out.
+        is Block.Unknown -> block.html?.let { HtmlBlock(it, actions.onLink) }
     }
 }
 
@@ -550,15 +567,6 @@ private fun PostImage(block: Block.Image, actions: PostActions) {
         },
     )
 }
-
-@Composable
-private fun embedLabel(site: String?): String = when (site?.lowercase()) {
-    "youtube" -> stringResource(R.string.embed_youtube)
-    null, "" -> stringResource(R.string.embed_media)
-    else -> stringResource(R.string.embed_site, site.replaceFirstChar { it.uppercase() })
-}
-
-private fun hostOf(url: String): String = runCatching { URI(url).host?.removePrefix("www.") }.getOrNull() ?: url
 
 @Composable
 private fun LinkLine(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
@@ -737,7 +745,7 @@ fun ReactionSummaryRow(summary: ReactionSummary, modifier: Modifier = Modifier, 
 }
 
 /** XenForo's default reactions: 1 like, 2 love, 3 haha, 4 wow, 5 sad, 6 angry; names win when given. */
-private fun reactionIcon(id: Int, name: String?): ImageVector = when (name?.lowercase()) {
+internal fun reactionIcon(id: Int, name: String?): ImageVector = when (name?.lowercase()) {
     "like" -> Icons.Outlined.ThumbUp
     "love" -> Icons.Outlined.Favorite
     "haha" -> Icons.Outlined.SentimentVerySatisfied

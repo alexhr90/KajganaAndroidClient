@@ -68,7 +68,7 @@ fun ForumScreen(
     onBack: () -> Unit,
     onForum: (Forum) -> Unit,
     onThread: OpenThread,
-    onNewThread: (String) -> Unit,
+    onNewThread: (com.alexhr90.muabet.ui.compose.ComposeTarget) -> Unit,
     viewModel: ForumViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -87,7 +87,7 @@ fun ForumScreen(
         snackbarHost = { MuabetSnackbarHost(snackbar) },
         actions = {
             if (loggedIn) {
-                IconButton(onClick = { onNewThread(ForumUrls.postThread(viewModel.slug, viewModel.forumId)) }) {
+                IconButton(onClick = { onNewThread(com.alexhr90.muabet.ui.compose.ComposeTarget(com.alexhr90.muabet.ui.compose.ComposeKind.Thread, viewModel.forumId, viewModel.slug, title)) }) {
                     Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.action_new_thread))
                 }
             }

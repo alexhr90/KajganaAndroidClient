@@ -44,4 +44,13 @@ complete app. Tick items as they land and keep this file in step with the code.
 - [x] Alert notifications through WorkManager (adds `POST_NOTIFICATIONS`), off by default, 15 minutes to 3 hours apart, quiet hours; Settings says that polled alerts arrive late.
 - [x] Home-screen widget for watched threads; forum links open in the app through "Open with" and the share sheet.
 - [x] Backup and restore of favourites, hidden forums, mutes and settings (JSON file); accessibility pass; all four languages complete.
-- [ ] CI green with the preview APK; owner's phone test of v1.0.0 (`docs/DEVICE_TEST.md`).
+- [x] CI green with the preview APK; owner's phone test of v1.0.0 (`docs/DEVICE_TEST.md`).
+
+## v1.1.0: fully native (owner's feedback on v1.0.0)
+
+"YouTube videos and other embedded elements show as 'Part of this post opens on the forum', and replying opens the web wrapper. The app should feel native and seamless."
+
+- [x] Embeds recognised from every markup the forum uses (XenForo media BB code, s9e, iframes, video tags, unfurls) in `MediaSites`; videos play in place, music in a small player, social posts open in their app; tables, boxes and files native; anything else rendered in place from its HTML (D15).
+- [x] Native compose screen: reply, quote, new thread, edit, direct message and reply, BB code tools, photo upload, drafts (D16).
+- [x] Native reactions, bookmarks, watch, delete and report; native direct messages, member profiles and bookmarks.
+- [ ] Owner's phone test of v1.1.0 (`docs/DEVICE_TEST.md`).

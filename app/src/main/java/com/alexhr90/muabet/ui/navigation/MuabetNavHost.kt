@@ -82,7 +82,13 @@ import com.alexhr90.muabet.domain.url.Route
 import com.alexhr90.muabet.domain.url.ThreadTarget
 import com.alexhr90.muabet.ui.common.LocalOpenLink
 import com.alexhr90.muabet.ui.common.LocalOpenWeb
-import com.alexhr90.muabet.ui.common.rememberCustomTabOpener
+import com.alexhr90.muabet.ui.common.rememberExternalOpener
+import com.alexhr90.muabet.ui.compose.ComposeScreen
+import com.alexhr90.muabet.ui.compose.ComposeTarget
+import com.alexhr90.muabet.ui.member.MemberScreen
+import com.alexhr90.muabet.ui.messages.BookmarksScreen
+import com.alexhr90.muabet.ui.messages.ConversationScreen
+import com.alexhr90.muabet.ui.messages.ConversationsScreen
 import com.alexhr90.muabet.ui.forum.ForumScreen
 import com.alexhr90.muabet.ui.forum.OpenThread
 import com.alexhr90.muabet.ui.forums.ForumsScreen
@@ -114,6 +120,11 @@ object Routes {
     const val HIDDEN = "settings/hidden"
     const val MUTES = "settings/mutes"
     const val SAVED = "settings/saved"
+    const val COMPOSE = "compose?kind={kind}&id={id}&slug={slug}&title={title}&post={post}&to={to}"
+    const val MESSAGES = "messages"
+    const val CONVERSATION = "messages/{id}?slug={slug}&title={title}"
+    const val MEMBER = "member/{id}?slug={slug}"
+    const val BOOKMARKS = "bookmarks"
 
     val TABS = listOf(FORUMS, NEW, WATCHED, ALERTS)
 
@@ -125,6 +136,10 @@ object Routes {
     fun threadAt(url: String) = "thread?at=${Uri.encode(url)}"
     fun web(url: String, login: Boolean = false, compose: Boolean = false) = "web?url=${Uri.encode(url)}&login=$login&compose=$compose"
     fun search(threadId: Long = 0, title: String = "", url: String = "") = "search?thread=$threadId&title=${Uri.encode(title)}&url=${Uri.encode(url)}"
+    fun compose(t: ComposeTarget) =
+        "compose?kind=${t.kind.name}&id=${t.id}&slug=${Uri.encode(t.slug)}&title=${Uri.encode(t.title)}&post=${t.post}&to=${Uri.encode(t.to)}"
+    fun conversation(id: Long, slug: String, title: String = "") = "messages/$id?slug=${Uri.encode(slug)}&title=${Uri.encode(title)}"
+    fun member(id: Long, slug: String) = "member/$id?slug=${Uri.encode(slug)}"
 }
 
 /** The app-wide view of the session, for the tabs that need a login and the expired-session bar. */
@@ -161,7 +176,8 @@ fun MuabetNavHost(
     val route = entry?.destination?.route
     val showBar = route in Routes.TABS
     val context = LocalContext.current
-    val openTab = rememberCustomTabOpener(context)
+    // Other sites open in their own app when one is installed (YouTube, Instagram…), else a Custom Tab.
+    val openTab = rememberExternalOpener(context)
 
     fun goTab(r: String) = navController.navigate(r) {
         popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -187,7 +203,11 @@ fun MuabetNavHost(
                         navController.navigate(Routes.threadAt(abs))
                     }
                     is Route.Post -> navController.navigate(Routes.threadAt(ForumUrls.post(r.id)))
-                    is Route.Category, is Route.Member, is Route.ForumWeb -> navController.navigate(Routes.web(abs))
+                    is Route.Member -> navController.navigate(Routes.member(r.id, r.slug))
+                    Route.Conversations -> navController.navigate(Routes.MESSAGES)
+                    is Route.Conversation -> navController.navigate(Routes.conversation(r.id, r.slug))
+                    Route.Bookmarks -> navController.navigate(Routes.BOOKMARKS)
+                    is Route.Category, is Route.ForumWeb -> navController.navigate(Routes.web(abs))
                     is Route.External -> openTab(r.url)
                 }
             }
@@ -281,8 +301,9 @@ private fun Graph(navController: NavHostController, login: () -> Unit, openLink:
         if (page == 0 && t.unread) navController.navigate(Routes.threadAt(ForumUrls.threadUnread(t.slug, t.id)))
         else navController.navigate(Routes.thread(t.id, t.slug, page, t.title))
     }
-    // Forms on the forum (reply, quote, react, watch, new thread) come back to the native thread.
-    val compose: (String) -> Unit = { url -> navController.navigate(Routes.web(url, compose = true)) }
+    // Writing (reply, quote, edit, new thread, messages) happens on the native compose screen.
+    val compose: (ComposeTarget) -> Unit = { t -> navController.navigate(Routes.compose(t)) }
+    val profile: (Long, String) -> Unit = { id, slug -> navController.navigate(Routes.member(id, slug)) }
 
     NavHost(
         navController = navController,
@@ -315,7 +336,7 @@ private fun Graph(navController: NavHostController, login: () -> Unit, openLink:
         }
         composable(Routes.NEW) { NewScreen(onThread = openThread, onSettings = settings, onSearch = search) }
         composable(Routes.WATCHED) { WatchedScreen(onThread = openThread, onSettings = settings, onSearch = search, onLogin = login) }
-        composable(Routes.ALERTS) { AlertsScreen(onSettings = settings, onLogin = login) }
+        composable(Routes.ALERTS) { AlertsScreen(onSettings = settings, onLogin = login, onMessages = { navController.navigate(Routes.MESSAGES) }) }
         composable(
             Routes.FORUM,
             arguments = listOf(
@@ -345,6 +366,7 @@ private fun Graph(navController: NavHostController, login: () -> Unit, openLink:
             ThreadScreen(
                 onBack = back,
                 onCompose = compose,
+                onProfile = profile,
                 onSearchInThread = { id, title -> navController.navigate(Routes.search(id, title)) },
                 onSearchUrl = { url -> navController.navigate(Routes.search(url = url)) },
                 openAtRequest = openAt,
@@ -393,6 +415,8 @@ private fun Graph(navController: NavHostController, login: () -> Unit, openLink:
             SettingsScreen(
                 onBack = back,
                 onLogin = login,
+                onMessages = { navController.navigate(Routes.MESSAGES) },
+                onBookmarks = { navController.navigate(Routes.BOOKMARKS) },
                 onSessionCheck = { navController.navigate(Routes.SESSION_CHECK) },
                 onHidden = { navController.navigate(Routes.HIDDEN) },
                 onMutes = { navController.navigate(Routes.MUTES) },
@@ -402,6 +426,73 @@ private fun Graph(navController: NavHostController, login: () -> Unit, openLink:
         composable(Routes.SESSION_CHECK) { SessionCheckScreen(onBack = back, onLogin = login) }
         composable(Routes.HIDDEN) { HiddenForumsScreen(onBack = back) }
         composable(Routes.MUTES) { MutesScreen(onBack = back) }
+        composable(
+            Routes.COMPOSE,
+            arguments = listOf(
+                navArgument("kind") { type = NavType.StringType; defaultValue = "Reply" },
+                navArgument("id") { type = NavType.LongType; defaultValue = 0L },
+                navArgument("slug") { type = NavType.StringType; defaultValue = "" },
+                navArgument("title") { type = NavType.StringType; defaultValue = "" },
+                navArgument("post") { type = NavType.LongType; defaultValue = 0L },
+                navArgument("to") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) {
+            ComposeScreen(
+                onBack = back,
+                onLogin = login,
+                onDone = { target ->
+                    navController.popBackStack()
+                    val top = navController.currentBackStackEntry
+                    val r = target?.let { ForumUrls.route(it) }
+                    when {
+                        target == null -> Unit
+                        top?.destination?.route == Routes.THREAD && (r is Route.Thread || r is Route.Post) -> top.savedStateHandle[KEY_OPEN_AT] = target
+                        top?.destination?.route == Routes.CONVERSATION && r is Route.Conversation &&
+                            top.arguments?.getLong("id") == r.id -> top.savedStateHandle[KEY_REFRESH] = true
+                        else -> openLink(target)
+                    }
+                },
+            )
+        }
+        composable(Routes.MESSAGES) {
+            ConversationsScreen(
+                onBack = back,
+                onOpen = { c -> navController.navigate(Routes.conversation(c.id, c.slug, c.title)) },
+                onNew = { compose(ComposeTarget(com.alexhr90.muabet.ui.compose.ComposeKind.NewMessage)) },
+                onLogin = login,
+            )
+        }
+        composable(
+            Routes.CONVERSATION,
+            arguments = listOf(
+                navArgument("id") { type = NavType.LongType },
+                navArgument("slug") { type = NavType.StringType; defaultValue = "" },
+                navArgument("title") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            val refresh by entry.savedStateHandle.getStateFlow(KEY_REFRESH, false).collectAsStateWithLifecycle()
+            ConversationScreen(
+                onBack = back,
+                onReply = { id, slug, title -> compose(ComposeTarget(com.alexhr90.muabet.ui.compose.ComposeKind.Message, id, slug, title)) },
+                onProfile = profile,
+                refreshRequest = refresh,
+                onRefreshHandled = { entry.savedStateHandle[KEY_REFRESH] = false },
+            )
+        }
+        composable(
+            Routes.MEMBER,
+            arguments = listOf(
+                navArgument("id") { type = NavType.LongType },
+                navArgument("slug") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) {
+            MemberScreen(
+                onBack = back,
+                onMessage = { name -> compose(ComposeTarget(com.alexhr90.muabet.ui.compose.ComposeKind.NewMessage, to = name)) },
+                onPosts = { id -> navController.navigate(Routes.search(url = ForumUrls.postsBy(id))) },
+            )
+        }
+        composable(Routes.BOOKMARKS) { BookmarksScreen(onBack = back, onLogin = login) }
         composable(Routes.SAVED) {
             SavedScreen(onBack = back, onOpen = { id, slug, page, title -> navController.navigate(Routes.thread(id, slug, page, title)) })
         }
@@ -410,3 +501,6 @@ private fun Graph(navController: NavHostController, login: () -> Unit, openLink:
 
 /** Saved-state key: a thread link the screen below a forum form should jump to. */
 private const val KEY_OPEN_AT = "openAt"
+
+/** Saved-state key: the conversation below the compose screen should reload to the newest message. */
+private const val KEY_REFRESH = "refresh"

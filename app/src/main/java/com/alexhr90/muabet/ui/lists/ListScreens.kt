@@ -164,7 +164,7 @@ private fun ThreadListScreen(
 
 /** The Alerts tab: the forum's alerts, newest first; a tap opens what the alert is about. */
 @Composable
-fun AlertsScreen(onSettings: () -> Unit, onLogin: () -> Unit, viewModel: AlertsViewModel = hiltViewModel()) {
+fun AlertsScreen(onSettings: () -> Unit, onLogin: () -> Unit, onMessages: () -> Unit, viewModel: AlertsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val loginNeeded by viewModel.loginNeeded.collectAsStateWithLifecycle()
@@ -176,7 +176,16 @@ fun AlertsScreen(onSettings: () -> Unit, onLogin: () -> Unit, viewModel: AlertsV
         onOpenSettings = onSettings,
         actions = {
             if (!loginNeeded) {
-                IconButton(onClick = { openWeb(ForumUrls.conversations) }) { Icon(Icons.Outlined.Mail, contentDescription = stringResource(R.string.direct_messages)) }
+                val unread by viewModel.messagesUnread.collectAsStateWithLifecycle()
+                IconButton(onClick = onMessages) {
+                    if (unread > 0) {
+                        androidx.compose.material3.BadgedBox(badge = { androidx.compose.material3.Badge { Text(if (unread > 99) "99+" else "$unread") } }) {
+                            Icon(Icons.Outlined.Mail, contentDescription = stringResource(R.string.cd_unread_messages, unread))
+                        }
+                    } else {
+                        Icon(Icons.Outlined.Mail, contentDescription = stringResource(R.string.direct_messages))
+                    }
+                }
             }
         },
     ) { padding ->

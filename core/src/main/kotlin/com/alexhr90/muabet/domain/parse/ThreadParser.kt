@@ -1,7 +1,9 @@
 package com.alexhr90.muabet.domain.parse
 
 import com.alexhr90.muabet.domain.model.Block
+import com.alexhr90.muabet.domain.model.EmbedKind
 import com.alexhr90.muabet.domain.model.Post
+import com.alexhr90.muabet.domain.model.PostAbilities
 import com.alexhr90.muabet.domain.model.PostAuthor
 import com.alexhr90.muabet.domain.model.ReactionSummary
 import com.alexhr90.muabet.domain.model.ThreadPage
@@ -47,8 +49,9 @@ object ThreadParser {
     }
 
     fun parsePost(el: Element, base: String = ForumUrls.BASE): Post? {
-        val id = el.attr("data-content").removePrefix("post-").toLongOrNull()
-            ?: el.id().removePrefix("js-post-").toLongOrNull()
+        // Posts carry `post-123`, direct messages `convMessage-123` (or similar): the number is the id.
+        val id = Regex("(\\d+)$").find(el.attr("data-content"))?.groupValues?.get(1)?.toLongOrNull()
+            ?: Regex("(\\d+)$").find(el.id())?.groupValues?.get(1)?.toLongOrNull()
             ?: el.selectFirst(".u-anchorTarget[id^=post-]")?.id()?.removePrefix("post-")?.toLongOrNull()
             ?: return null
         val attribution = el.selectFirst(".message-attribution")
@@ -68,6 +71,29 @@ object ThreadParser {
             body = body,
             reactions = parseReactions(el, base),
             unread = el.hasClass("is-unread") || el.selectFirst(".message-newIndicator") != null,
+            can = parseAbilities(el),
+        )
+    }
+
+    /**
+     * What the action bar offers. XenForo only renders the links the visitor may use: the reaction
+     * link (`has-reaction` and `data-reaction-id` once reacted), reply with quote, edit, delete,
+     * report, and the bookmark star (`is-bookmarked`).
+     */
+    fun parseAbilities(el: Element): PostAbilities {
+        val bar = el.selectFirst(".message-actionBar") ?: el
+        val react = bar.selectFirst("a.actionBar-action--reaction, a[data-xf-click=reaction]")
+        val mine = react?.takeIf { it.hasClass("has-reaction") }?.attr("data-reaction-id")?.toIntOrNull()
+        val bookmark = el.selectFirst("a.bookmarkLink, a.actionBar-action--bookmark")
+        return PostAbilities(
+            react = react != null,
+            quote = bar.selectFirst("a.actionBar-action--reply, a[data-xf-click=quote], a.actionBar-action--mq") != null,
+            edit = bar.selectFirst("a.actionBar-action--edit, a[href*=/edit][data-xf-click]") != null,
+            delete = bar.selectFirst("a.actionBar-action--delete, a[href*=/delete]") != null,
+            report = bar.selectFirst("a.actionBar-action--report, a[href*=/report]") != null,
+            bookmark = bookmark != null,
+            bookmarked = bookmark?.hasClass("is-bookmarked") == true,
+            myReactionId = mine,
         )
     }
 
@@ -98,9 +124,19 @@ object ThreadParser {
             val link = li.selectFirst("a.file-preview") ?: li.selectFirst("a[href]")
             val img = li.selectFirst("img")
             val full = ForumUrls.absolute(link?.attr("href"), base)
+            val name = li.selectFirst(".file-name")?.text()?.squash()?.takeIf { it.isNotEmpty() }
+            val video = li.selectFirst("video source[src], video[src]")?.let { ForumUrls.absolute(it.attr("src"), base) }
+            if (video != null || (full != null && (MediaSites.isVideoFile(full) || MediaSites.isVideoFile(name.orEmpty())))) {
+                return@mapNotNull Block.Embed(site = "video", url = video ?: full!!, kind = EmbedKind.VideoFile)
+            }
             val thumb = ForumUrls.absolute(img?.attr("src"), base)
-            val url = thumb ?: full ?: return@mapNotNull null
-            Block.Image(url = url, alt = li.selectFirst(".file-name")?.text()?.squash() ?: img?.attr("alt"), link = full)
+            if (thumb == null) {
+                // No preview: a document, an archive. Shown as a file to download.
+                val url = full ?: return@mapNotNull null
+                val meta = li.selectFirst(".file-meta")?.text()?.squash()?.takeIf { it.isNotEmpty() }
+                return@mapNotNull Block.File(name = name ?: url.substringAfterLast('/').substringBefore('?'), url = url, meta = meta)
+            }
+            Block.Image(url = thumb, alt = name ?: img?.attr("alt"), link = full)
         }
 
     private fun parseReactions(el: Element, base: String): ReactionSummary? {

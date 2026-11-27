@@ -21,7 +21,7 @@ Build a personal, unofficial Android client for [forum.kajgana.com](https://foru
 
 - No backend, accounts of its own, analytics, ads or crash reporters.
 - No admin cooperation: no API key and no OAuth client.
-- No native post editor, moderation tools or account settings in v1. These use the forum's own pages in a WebView.
+- No moderation tools or account settings in the app; these use the forum's own pages in a WebView. (v1.1.0 made posting native at the owner's request: `docs/DECISIONS.md` D16.)
 - No bulk downloading or archiving of the forum.
 - No Play Store release, iOS or tablet-specific layouts.
 

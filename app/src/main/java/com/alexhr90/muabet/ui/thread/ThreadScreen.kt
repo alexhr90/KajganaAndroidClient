@@ -29,6 +29,10 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AddReaction
 import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.BookmarkRemove
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DownloadForOffline
 import androidx.compose.material.icons.outlined.FormatQuote
@@ -42,6 +46,13 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FirstPage
 import androidx.compose.material.icons.rounded.LastPage
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,6 +96,9 @@ import com.alexhr90.muabet.R
 import com.alexhr90.muabet.data.repo.Loaded
 import com.alexhr90.muabet.designsystem.ActionSheet
 import com.alexhr90.muabet.designsystem.LocalReducedMotion
+import com.alexhr90.muabet.designsystem.LogoLoader
+import com.alexhr90.muabet.designsystem.Tone
+import com.alexhr90.muabet.designsystem.reactionIcon
 import com.alexhr90.muabet.designsystem.MemberSheet
 import com.alexhr90.muabet.designsystem.MuabetPullToRefresh
 import com.alexhr90.muabet.designsystem.MuabetSnackbarHost
@@ -107,7 +121,12 @@ import com.alexhr90.muabet.designsystem.numeric
 import com.alexhr90.muabet.domain.filter.MuteRules
 import com.alexhr90.muabet.domain.filter.PostText
 import com.alexhr90.muabet.domain.model.Post
+import com.alexhr90.muabet.domain.model.PostAbilities
 import com.alexhr90.muabet.domain.model.PostAuthor
+import com.alexhr90.muabet.domain.model.Reaction
+import com.alexhr90.muabet.ui.compose.ComposeKind
+import com.alexhr90.muabet.ui.compose.ComposeTarget
+import com.alexhr90.muabet.ui.common.downloadFile
 import com.alexhr90.muabet.domain.model.ThreadPage
 import com.alexhr90.muabet.domain.url.ForumUrls
 import com.alexhr90.muabet.ui.common.LoadedContent
@@ -135,8 +154,10 @@ import kotlin.math.abs
 @Composable
 fun ThreadScreen(
     onBack: () -> Unit,
-    /** Opens a forum form (reply, quote, react, watch, bookmark) that returns to the thread. */
-    onCompose: (String) -> Unit,
+    /** Opens the native compose screen (reply, quote, edit, a message to a member). */
+    onCompose: (ComposeTarget) -> Unit,
+    /** Opens a member's profile. */
+    onProfile: (Long, String) -> Unit,
     onSearchInThread: (Long, String) -> Unit,
     onSearchUrl: (String) -> Unit,
     openAtRequest: String?,
@@ -165,6 +186,10 @@ fun ThreadScreen(
     var image by rememberSaveable { mutableStateOf<String?>(null) }
     var member by remember { mutableStateOf<PostAuthor?>(null) }
     var postMenu by remember { mutableStateOf<Post?>(null) }
+    var reactFor by remember { mutableStateOf<Post?>(null) }
+    var deleteFor by remember { mutableStateOf<Post?>(null) }
+    var reportFor by remember { mutableStateOf<Post?>(null) }
+    LaunchedEffect(viewModel) { viewModel.errors.collect { snackbar.showSnackbar(it) } }
     val scope = rememberCoroutineScope()
     val reduced = LocalReducedMotion.current
 
@@ -194,7 +219,7 @@ fun ThreadScreen(
         snackbarHost = { MuabetSnackbarHost(snackbar) },
         actions = {
             if (info != null && info.canReply && loggedIn) {
-                IconButton(onClick = { onCompose(ForumUrls.reply(info.slug, info.threadId)) }) {
+                IconButton(onClick = { onCompose(ComposeTarget(ComposeKind.Reply, info.threadId, info.slug, info.title)) }) {
                     Icon(Icons.AutoMirrored.Outlined.Reply, contentDescription = stringResource(R.string.action_reply))
                 }
             }
@@ -207,7 +232,7 @@ fun ThreadScreen(
                             MenuItem(
                                 stringResource(if (info.watched) R.string.action_unwatch else R.string.action_watch),
                                 Icons.Outlined.Notifications,
-                            ) { menuOpen = false; onCompose(ForumUrls.watchThread(info.slug, info.threadId)) }
+                            ) { menuOpen = false; viewModel.toggleWatch() }
                         }
                         MenuItem(stringResource(R.string.action_save_offline), Icons.Outlined.DownloadForOffline) { menuOpen = false; saveOpen = true }
                         MenuItem(
@@ -238,6 +263,11 @@ fun ThreadScreen(
                     onOpenOnForum = { pageUrl?.let(openWeb) },
                     onAuthor = { member = it },
                     onMore = { postMenu = it },
+                    onDownload = { url, name ->
+                        if (downloadFile(context, url, name)) viewModel.say(R.string.msg_downloading) else openWeb(url)
+                    },
+                    onReact = if (loggedIn) ({ p: Post -> reactFor = p }) else null,
+                    onQuote = if (loggedIn && ti.canReply) ({ p: Post -> onCompose(ComposeTarget(ComposeKind.Reply, ti.threadId, ti.slug, ti.title, post = p.id)) }) else null,
                 )
                 HorizontalPager(
                     state = state,
@@ -252,7 +282,7 @@ fun ThreadScreen(
                         padding = padding,
                         actions = actions,
                         loggedIn = loggedIn,
-                        onReply = { onCompose(ForumUrls.reply(ti.slug, ti.threadId)) },
+                        onReply = { onCompose(ComposeTarget(ComposeKind.Reply, ti.threadId, ti.slug, ti.title)) },
                         onNext = { go(index + 2) },
                     )
                 }
@@ -271,29 +301,138 @@ fun ThreadScreen(
         MemberSheet(
             author = m,
             loggedIn = loggedIn,
-            onProfile = { member = null; m.profileUrl?.let(openWeb) },
-            onMessage = { member = null; openWeb(ForumUrls.messageTo(m.name)) },
+            onProfile = {
+                member = null
+                val id = m.userId ?: (m.profileUrl?.let(ForumUrls::route) as? com.alexhr90.muabet.domain.url.Route.Member)?.id
+                val slug = (m.profileUrl?.let(ForumUrls::route) as? com.alexhr90.muabet.domain.url.Route.Member)?.slug.orEmpty()
+                if (id != null) onProfile(id, slug) else m.profileUrl?.let(openWeb)
+            },
+            onMessage = { member = null; onCompose(ComposeTarget(ComposeKind.NewMessage, to = m.name)) },
             onPosts = { member = null; m.userId?.let { onSearchUrl(ForumUrls.postsBy(it)) } },
             onDismiss = { member = null },
         )
     }
-    postMenu?.let { post ->
+    postMenu?.let { shown ->
+        val post = shown.withFallbackAbilities(loggedIn)
         val canPost = loggedIn && info?.canReply == true
         val postUrl = ForumUrls.post(post.id)
         val actions = buildList {
-            if (canPost && info != null) add(SheetAction(stringResource(R.string.action_quote), Icons.Outlined.FormatQuote) { onCompose(ForumUrls.quote(info.slug, info.threadId, post.id)) })
-            if (loggedIn) {
-                add(SheetAction(stringResource(R.string.action_react), Icons.Outlined.AddReaction) { onCompose(ForumUrls.react(post.id)) })
-                add(SheetAction(stringResource(R.string.action_bookmark), Icons.Outlined.BookmarkAdd) { onCompose(ForumUrls.bookmarkPost(post.id)) })
+            if (canPost && info != null && post.can.quote) {
+                add(SheetAction(stringResource(R.string.action_quote), Icons.Outlined.FormatQuote) { onCompose(ComposeTarget(ComposeKind.Reply, info.threadId, info.slug, info.title, post = post.id)) })
+            }
+            if (loggedIn && post.can.react) add(SheetAction(stringResource(R.string.action_react), Icons.Outlined.AddReaction) { reactFor = post })
+            if (loggedIn && post.can.bookmark) {
+                add(
+                    SheetAction(
+                        stringResource(if (post.can.bookmarked) R.string.action_remove_bookmark else R.string.action_bookmark),
+                        if (post.can.bookmarked) Icons.Outlined.BookmarkRemove else Icons.Outlined.BookmarkAdd,
+                    ) { viewModel.toggleBookmark(post) },
+                )
+            }
+            if (post.can.edit && info != null) {
+                add(SheetAction(stringResource(R.string.action_edit), Icons.Outlined.Edit) { onCompose(ComposeTarget(ComposeKind.Edit, info.threadId, info.slug, info.title, post = post.id)) })
             }
             add(SheetAction(stringResource(R.string.action_copy_text), Icons.Outlined.ContentCopy) { copyText(context, post.author.name, PostText.plain(post.body)) })
             add(SheetAction(stringResource(R.string.action_share), Icons.Outlined.Share) { shareLink(context, postUrl, title) })
             add(SheetAction(stringResource(R.string.action_copy_link), Icons.Outlined.Link) { copyText(context, title, postUrl) })
+            if (post.can.report) add(SheetAction(stringResource(R.string.action_report), Icons.Outlined.Flag) { reportFor = post })
+            if (post.can.delete) add(SheetAction(stringResource(R.string.action_delete), Icons.Outlined.Delete, Tone.Negative) { deleteFor = post })
             add(SheetAction(stringResource(R.string.action_open_on_forum), Icons.Outlined.OpenInBrowser) { openWeb(postUrl) })
         }
         val heading = listOfNotNull(post.author.name, post.number?.let { "#$it" }).joinToString("  ·  ")
         ActionSheet(title = heading, actions = actions, onDismiss = { postMenu = null })
     }
+    reactFor?.let { post ->
+        val reactions by viewModel.reactions.collectAsStateWithLifecycle()
+        LaunchedEffect(post.id) { viewModel.loadReactions(post.id) }
+        ReactionPicker(
+            reactions = reactions,
+            mine = post.can.myReactionId,
+            onPick = { id -> reactFor = null; viewModel.react(post, id) },
+            onDismiss = { reactFor = null },
+        )
+    }
+    deleteFor?.let { post ->
+        ReasonDialog(
+            title = stringResource(R.string.delete_title),
+            label = stringResource(R.string.delete_reason),
+            confirm = stringResource(R.string.action_delete),
+            required = false,
+            onConfirm = { reason -> deleteFor = null; viewModel.delete(post, reason) },
+            onDismiss = { deleteFor = null },
+        )
+    }
+    reportFor?.let { post ->
+        ReasonDialog(
+            title = stringResource(R.string.report_title),
+            label = stringResource(R.string.report_reason),
+            confirm = stringResource(R.string.action_report),
+            required = true,
+            onConfirm = { reason -> reportFor = null; viewModel.reportPost(post, reason) },
+            onDismiss = { reportFor = null },
+        )
+    }
+}
+
+/** The forum's reactions in a row; the visitor's own is marked and a tap on it takes it back. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReactionPicker(reactions: List<Reaction>?, mine: Int?, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = floatingGround) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = Space.xl).padding(bottom = Space.xxl), verticalArrangement = Arrangement.spacedBy(Space.m)) {
+            Text(stringResource(R.string.react_title), style = MaterialTheme.typography.titleMedium)
+            if (reactions == null) {
+                Box(Modifier.fillMaxWidth().heightIn(min = 72.dp), contentAlignment = Alignment.Center) { LogoLoader(Modifier.size(28.dp)) }
+            } else {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                    reactions.forEach { r ->
+                        val chosen = r.id == mine
+                        Column(
+                            Modifier
+                                .clip(MaterialTheme.shapes.medium)
+                                .background(if (chosen) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable(role = Role.Button) { onPick(r.id) }
+                                .padding(horizontal = Space.s, vertical = Space.s)
+                                .widthIn(min = 56.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (r.imageUrl != null) {
+                                AsyncImage(model = r.imageUrl, contentDescription = null, modifier = Modifier.size(32.dp))
+                            } else {
+                                Icon(reactionIcon(r.id, r.name), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                            }
+                            Text(r.name, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                        }
+                    }
+                }
+                if (mine != null) {
+                    Text(stringResource(R.string.react_take_back), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+/** Asks for a reason: deleting (optional) or reporting (required) a post. */
+@Composable
+private fun ReasonDialog(title: String, label: String, confirm: String, required: Boolean, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var reason by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = reason,
+                onValueChange = { reason = it },
+                label = { Text(label) },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(reason.trim()) }, enabled = !required || reason.isNotBlank()) { Text(confirm) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }
 
 @Composable
@@ -361,7 +500,7 @@ private fun ThreadPageContent(
                     }
                 }
                 itemsIndexed(tp.posts, key = { _, p -> p.id }, contentType = { _, _ -> "post" }) { _, post ->
-                    PostOrMuted(post, rules, actions, highlighted = false)
+                    PostOrMuted(post.withFallbackAbilities(loggedIn), rules, actions, highlighted = false)
                 }
                 item(key = "end", contentType = "end") {
                     PageEnd(page, info.lastPage, canReply = loggedIn && tp.canReply, onReply = onReply, onNext = onNext)
@@ -370,6 +509,13 @@ private fun ThreadPageContent(
         }
     }
 }
+
+/**
+ * When the page showed no action bar the visitor could read (a markup change), a logged-in
+ * visitor still gets the usual actions; the forum itself says no if one is not allowed.
+ */
+private fun Post.withFallbackAbilities(loggedIn: Boolean): Post =
+    if (loggedIn && can == PostAbilities.None) copy(can = PostAbilities(react = true, quote = true, bookmark = true)) else this
 
 @Composable
 private fun PostOrMuted(post: Post, rules: MuteRules, actions: PostActions, highlighted: Boolean) {
@@ -478,7 +624,7 @@ private const val MAX_SAVE_PAGES = 200
 
 /** Tap an image to see it whole: pinch or double-tap to zoom, drag to pan, tap or Back to close. */
 @Composable
-private fun ImageViewer(url: String, onDismiss: () -> Unit) {
+internal fun ImageViewer(url: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         var scale by remember { mutableFloatStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }

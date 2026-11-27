@@ -67,6 +67,8 @@ private val QUIET_PRESETS = listOf(0 to 0, 22 to 7, 23 to 7, 0 to 8, 22 to 9)
 fun SettingsScreen(
     onBack: () -> Unit,
     onLogin: () -> Unit,
+    onMessages: () -> Unit,
+    onBookmarks: () -> Unit,
     onSessionCheck: () -> Unit,
     onHidden: () -> Unit,
     onMutes: () -> Unit,
@@ -111,7 +113,7 @@ fun SettingsScreen(
                         title = stringResource(R.string.direct_messages),
                         subtitle = stringResource(R.string.direct_messages_hint),
                         icon = Icons.Outlined.Mail,
-                        onClick = { openWeb(ForumUrls.conversations) },
+                        onClick = onMessages,
                     )
                 }
                 item {
@@ -119,7 +121,7 @@ fun SettingsScreen(
                         title = stringResource(R.string.bookmarks),
                         subtitle = stringResource(R.string.bookmarks_hint),
                         icon = Icons.Outlined.Bookmarks,
-                        onClick = { openWeb(ForumUrls.bookmarks) },
+                        onClick = onBookmarks,
                     )
                 }
                 item {

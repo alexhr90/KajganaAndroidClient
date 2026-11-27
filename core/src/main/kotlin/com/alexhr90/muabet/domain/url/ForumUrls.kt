@@ -10,6 +10,9 @@ sealed interface Route {
     data class Thread(val id: Long, val slug: String, val page: Int = 1, val target: ThreadTarget = ThreadTarget.Page) : Route
     data class Post(val id: Long) : Route
     data class Member(val id: Long, val slug: String) : Route
+    data object Conversations : Route
+    data class Conversation(val id: Long, val slug: String, val page: Int = 1) : Route
+    data object Bookmarks : Route
     /** A forum page with no native screen yet (login, account, search…): opens in the WebView. */
     data class ForumWeb(val url: String) : Route
     /** Anything off the forum: opens in a Custom Tab. */
@@ -58,6 +61,29 @@ object ForumUrls {
     /** A new direct message to [username]. */
     fun messageTo(username: String): String = "$BASE/direct-messages/add?to=" + java.net.URLEncoder.encode(username, "UTF-8")
 
+    // Forms the app sends itself (with `_xfResponseType=json`), so posting never leaves the app.
+    fun addReply(slug: String, id: Long): String = "$BASE/threads/${node(slug, id)}/add-reply"
+    fun postQuote(postId: Long): String = "$BASE/posts/$postId/quote"
+    fun editPost(postId: Long): String = "$BASE/posts/$postId/edit"
+    fun deletePost(postId: Long): String = "$BASE/posts/$postId/delete"
+    fun reportPost(postId: Long): String = "$BASE/posts/$postId/report"
+    fun reactTo(postId: Long, reactionId: Int): String = "$BASE/posts/$postId/react?reaction_id=$reactionId"
+    fun conversation(slug: String, id: Long, page: Int = 1): String = "$BASE/direct-messages/${node(slug, id)}/" + pageSuffix(page)
+    fun conversationReply(slug: String, id: Long): String = "$BASE/direct-messages/${node(slug, id)}/add-reply"
+    val newConversation: String = "$BASE/direct-messages/add"
+
+    /** Where a file is uploaded for a post: a reply in [threadId], or a new thread in [forumId]. */
+    fun attachmentUpload(hash: String, threadId: Long? = null, forumId: Long? = null, conversationId: Long? = null): String {
+        val type = if (conversationId != null || (threadId == null && forumId == null)) "conversation_message" else "post"
+        val ctx = when {
+            threadId != null -> "&context%5Bthread_id%5D=$threadId"
+            forumId != null -> "&context%5Bnode_id%5D=$forumId"
+            conversationId != null -> "&context%5Bconversation_id%5D=$conversationId"
+            else -> ""
+        }
+        return "$BASE/attachments/upload?type=$type$ctx&hash=$hash"
+    }
+
     /** Everything a member posted, newest first. */
     fun postsBy(userId: Long): String = "$BASE/search/member?user_id=$userId"
 
@@ -105,6 +131,7 @@ object ForumUrls {
     private val threadPath = Regex("^/threads/(?:(.*)\\.)?(\\d+)/?(?:(page-(\\d+))|(post-(\\d+))|(unread)|(latest))?/?$")
     private val postPath = Regex("^/posts/(\\d+)(?:/.*)?$")
     private val memberPath = Regex("^/members/(?:(.*)\\.)?(\\d+)/?.*$")
+    private val conversationPath = Regex("^/(?:direct-messages|conversations)/(?:(.*)\\.)?(\\d+)/?(?:page-(\\d+))?/?(?:unread|latest)?/?$")
     private val categoryPath = Regex("^/categories/(?:(.*)\\.)?(\\d+)/?$")
 
     /** Recognises a link (SPEC §3 "Links"): forum pages route natively, other sites go to a Custom Tab. */
@@ -144,6 +171,11 @@ object ForumUrls {
         }
         categoryPath.matchEntire(path)?.let { m -> return Route.Category(m.groupValues[2].toLong()) }
         memberPath.matchEntire(path)?.let { m -> return Route.Member(m.groupValues[2].toLong(), m.groupValues[1]) }
+        if (path == "/direct-messages/" || path == "/direct-messages" || path == "/conversations/" || path == "/conversations") return Route.Conversations
+        conversationPath.matchEntire(path)?.let { m ->
+            return Route.Conversation(m.groupValues[2].toLong(), m.groupValues[1], (m.groupValues[3].toIntOrNull() ?: 1).coerceAtLeast(1))
+        }
+        if (path.trimEnd('/') == "/account/bookmarks") return Route.Bookmarks
         return Route.ForumWeb(full)
     }
 

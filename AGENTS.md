@@ -6,7 +6,7 @@ Read, in order: `SPEC.md` (what and why), `PLAN.md` (milestones and tasks), `doc
 
 ## Current status
 
-**v1.0.0 (M1 to M4) is implemented and waiting for the owner's phone test** (`docs/DEVICE_TEST.md`). Spikes 1 and 2 passed on v0.1.0 (`docs/DECISIONS.md` D6, D7). After v0.1.0 the owner asked for all remaining milestones in one release, pushed once and tested as a complete app; follow-up work goes in small releases (bump PATCH or MINOR).
+**v1.1.0 (fully native) is implemented and waiting for the owner's phone test** (`docs/DEVICE_TEST.md`). v1.0.0 (M1 to M4) was released; the owner's feedback on it asked for embeds to play in the app and for writing without the web wrapper (D15, D16). The owner wants each release finished and polished, pushed once and tested as a complete app.
 
 ## Hard rules
 
@@ -18,7 +18,7 @@ Read, in order: `SPEC.md` (what and why), `PLAN.md` (milestones and tasks), `doc
 6. **Be a polite client** (`SPEC.md` §3, D8): every forum request goes through `PolitenessInterceptor` (2 at once, 1 per second, back-off, User-Agent `Muabet/<version> (+https://github.com/alexhr90/KajganaAndroidClient)`). **Never work around a bot check or block**: show the page in the WebView and tell the owner.
 7. **The repo is public.** Fixtures are synthetic pages modelled on XenForo markup with invented names and text. Never commit real posts, usernames, cookies, page copies, screenshots or the Kajgana logo.
 8. **Session:** the user logs in on the forum's own page in the WebView. The app never sees or stores the password and never logs, stores or exports cookie values (names only, as in the session check). `app_webview` and `muabet.db` stay excluded in `backup_rules.xml` and `data_extraction_rules.xml`.
-9. Parsing never leaves a blank screen: a failed parse is `Loaded.Failed`, an unknown block is `Block.Unknown`, and both offer "Open on the forum".
+9. Parsing never leaves a blank screen: a failed parse is `Loaded.Failed` (offers "Open on the forum"); an unknown block is `Block.Unknown` carrying its HTML, drawn in place by `HtmlBlock`. Nothing in a post may send the reader to the forum's web page.
 10. Every user-visible string goes in `tools/strings.py` (en, mk, de, ru in one tuple), then `python3 tools/strings.py` regenerates `res/values*/strings.xml`; never edit those files by hand. Same format arguments in every language; Russian plurals need `one`, `few`, `many` and `other`. Design voice: sentence case, no emoji, no exclamation marks.
 11. Never commit secrets, keystores (except the shared non-secret `config/debug.keystore`), `local.properties` or `release.jks`.
 12. Icons and graphics must be original or openly licensed, recorded in `docs/ASSETS.md`.
@@ -31,25 +31,36 @@ Kotlin · Jetpack Compose (Material 3) · MVVM + Clean Architecture · Hilt · D
 
 Izvor's design system with Kajgana orange as the only change (`SPEC.md` §5). `designsystem/` is a renamed copy of Izvor's: `ScreenScaffold`, `PageTitle`/`pageTitle` (accent full stop), `NavigationRow`, `ValueRow`, `SwitchRow`, `SectionCard`, `SectionHeader`, `StatusPill`, `InfoRow`, `PrimaryPill`, `OutlinedPill`, `ChoiceDialog`, `EmptyState`, `LoadingState`, `NoteCard`, the glass helpers (`glassColor`, `glassColorStrong`, `glassBorder`, `floatingGround`), `LogoLoader` (never a Material spinner), `MuabetPullToRefresh`, `MuabetSnackbarHost`, `MuabetBackdrop` and `LaunchIntro`. Accent: `#FF6D10` on charcoal `#101112` in dark mode, `#A34300` on paper `#F5F6F0` in light mode (the bright orange fails contrast on paper). Warning amber and negative coral sit close to orange: always pair them with an icon or label. Open rows with 1 dp `Rule`s, pills of `PillHeight`, no shadows or gradients on controls, Material Rounded and Outlined icons, 48 dp targets, `LocalReducedMotion` respected everywhere.
 
-Muabet's own pieces live in `designsystem/ForumComponents.kt`: `ForumRow` and `ThreadRow` (long-press menus, compact density from `LocalCompactRows`), `PostItem` (a glass card per post: avatar and name open the member card, a "New" pill, ⋮ for the post menu), `MutedPostItem`, `Avatar`, `MemberSheet`, `ActionSheet` with `SheetAction`, `PostImage` (`LocalImagesOnTap`, loading and error states), `QuoteBlock` (collapsed), `ReactionSummaryRow`, `PageJumpSheet`, `UnreadDot`. Top and bottom bars use `barGround`, which is opaque enough that text never shows through. The mark (`designsystem/Brand.kt`, `res/drawable/ic_launcher_foreground.xml`) is an original speech bubble (D10); never use the Kajgana logo.
+Muabet's own pieces live in `designsystem/ForumComponents.kt`: `ForumRow` and `ThreadRow` (long-press menus, compact density from `LocalCompactRows`), `PostItem` (a glass card per post: avatar and name open the member card, a "New" pill, ⋮ for the post menu, React and Quote under the body), `MutedPostItem`, `Avatar`, `MemberSheet`, `ActionSheet` with `SheetAction`, `PostImage` (`LocalImagesOnTap`, loading and error states), `QuoteBlock` (collapsed), `ReactionSummaryRow`, `PageJumpSheet`, `UnreadDot`; media, tables, boxes, files and link cards in `designsystem/MediaBlocks.kt`. Top and bottom bars use `barGround`, which is opaque enough that text never shows through. The mark (`designsystem/Brand.kt`, `res/drawable/ic_launcher_foreground.xml`) is an original speech bubble (D10); never use the Kajgana logo.
 
 ## Architecture
 
 ```
 :core  (pure Kotlin/JVM, no Android types)
   domain.model   SessionInfo (with alert and message badges), PageInfo, ForumHome, Category, Forum,
-                 SubForum, LatestThread, ForumPage, ThreadSummary, ThreadList, ThreadPage, Post,
-                 PostAuthor, ReactionSummary, Alert, AlertList, SearchResult, SearchPage, Block, Run
-  domain.parse   HomeParser (+ NodeParser), ForumParser, ThreadRowParser, ThreadParser, BbContent,
-                 ListParser (New, Watched, Alerts, search), SessionParser, parseNextUrl, ParseException
+                 SubForum, LatestThread, ForumPage, ThreadSummary, ThreadList, ThreadPage, Post
+                 (with PostAbilities), PostAuthor, ReactionSummary, Reaction, Alert, AlertList,
+                 SearchResult, SearchPage, ConversationSummary, ConversationList, ConversationPage,
+                 MemberProfile, FormResult, Block (Paragraph, Quote, Image, Link, Embed with
+                 EmbedKind, Spoiler, Code, ListBlock, Table, Box, File, Unknown with html), Run
+  domain.parse   HomeParser (+ NodeParser), ForumParser, ThreadRowParser, ThreadParser (abilities,
+                 attachments as images, files or videos), BbContent, MediaSites (embed recognition),
+                 ListParser (New, Watched, Alerts, search, bookmarks), ConversationParser,
+                 MemberParser, XfJson (form answers, reaction picker), BbCode (edit form and editor
+                 HTML to BB code), FormFields, SessionParser, parseNextUrl, ParseException
   domain.filter  MuteRules (muted threads and keywords, hidden forums), PostText (plain text of a post)
-  domain.url     ForumUrls (builders incl. reply, quote, react, watch, post-thread, search, member,
-                 route(), preferHttps), Route, ThreadTarget
+  domain.url     ForumUrls (builders incl. add-reply, post-thread, quote, edit, delete, report,
+                 react, bookmark, watch, direct messages, attachment upload, search, member,
+                 route(), preferHttps), Route (incl. Member, Conversations, Conversation,
+                 Bookmarks), ThreadTarget
   domain.net     Politeness, RequestSpacing, Backoff, BlockDetector, BlockKind
 :app
   designsystem   Izvor's components recoloured, Brand, ForumComponents, Reading (LocalCompactRows,
                  LocalImagesOnTap)
-  data.remote    ForumHttp.kt: WebViewCookieJar, PolitenessInterceptor, ForumFetcher, FetchResult
+  data.remote    ForumHttp.kt: WebViewCookieJar, PolitenessInterceptor, ForumFetcher (get, getJson,
+                 send with multipart Upload), FetchResult
+  data.post      PostingRepository (Sent, EditSource, AttachTo, Attached), DraftStore (DataStore
+                 "drafts", cleared on send and logout)
   data.local     Room: MuabetDatabase, entities, LibraryDao, ReadingDao, SavedDao, WatchedCacheDao
   data.repo      ForumRepository (Loaded<T>, session and sessionExpired flows, saved-page fallback),
                  LibraryRepository, ReadingRepository, SavedRepository, SessionRepository
@@ -60,9 +71,12 @@ Muabet's own pieces live in `designsystem/ForumComponents.kt`: `ForumRow` and `T
   work           SyncWorker (badge check, widget list), WorkScheduler
   widget         WatchedWidget (RemoteViews), WatchedWidgetService
   di             AppModule (OkHttp, Room and DAOs)
-  ui             navigation (MuabetNavHost, Routes, AppViewModel, expired-session bar), common,
-                 forums, forum, thread (pager), lists (New, Watched, Alerts), search, library
-                 (hidden forums, mutes, saved threads), web, settings
+  ui             navigation (MuabetNavHost, Routes, AppViewModel, expired-session bar), common
+                 (incl. rememberExternalOpener, downloadFile), forums, forum, thread (pager, reaction
+                 picker, delete and report dialogs), compose (ComposeScreen, ComposeViewModel,
+                 ComposeTarget), messages (conversations, conversation, bookmarks), member, lists
+                 (New, Watched, Alerts), search, library (hidden forums, mutes, saved threads), web
+                 (login and account pages), settings
 ```
 
 Pure logic belongs in `:core` so it can be unit tested on the JVM. `ui` depends on `data.repo`; screens get `UiState<T>` and render it with `LoadedContent`.
@@ -74,7 +88,9 @@ Pure logic belongs in `:core` so it can be unit tested on the JVM. `ui` depends 
 - **Session state:** every parsed page updates `ForumRepository.session`; a guest page while `xf_user` exists sets `sessionExpired`, shown as a bar above the tabs.
 - **Logout:** clears all WebView cookies and storage, the widget's list and the alerts notification; the session is guest.
 - **Thread:** `HorizontalPager` keyed by thread id, one page per screen, only pages near the one on screen kept in memory. Route `thread?id&slug&page&title&at`: `page=0` resumes the remembered position, `at` opens any thread link. Opening an unread thread from a list goes through `/unread`. The first post on screen is saved per thread (debounced). Offline, a saved page stands in with a note.
-- **Forms:** `Routes.web(url, compose = true)`; when the WebView starts loading a thread or post address, it pops and hands the address to the thread below through the saved-state key `openAt` (or opens it).
+- **Writing (D16):** `Routes.compose(ComposeTarget)` with kind Reply (with `post` for a quote), Thread, Edit, Message or NewMessage. On success the screen pops and hands the forum's redirect to the thread below through the saved-state key `openAt`, to the conversation below through `refresh`, or to `openLink`. Quick actions (react, bookmark, watch, delete, report) live in `ThreadViewModel`, update the post at once and roll back on failure; refusals show the forum's own words. A post whose action bar could not be read gets react, quote and bookmark when logged in.
+- **Media (D15):** `designsystem/MediaBlocks.kt`: `EmbedBlock` (players in a WebView with the forum as base URL, full screen through `onShowCustomView`, new windows sent to the site's app), `VideoFileEmbed` (VideoView with cookies), `TableBlock`, `BoxBlock`, `FileBlock`, `LinkCard`, `HtmlBlock` (auto-height transparent WebView for unknown markup). `MainActivity` handles orientation and screen size changes itself so a playing video survives rotation.
+- **External links:** `rememberExternalOpener` tries the site's own app first (Android 11+), then a Custom Tab.
 - **Lists:** `EndlessViewModel` loads the first page once the session is known, more near the end (`nearEnd`), and reloads on login or logout. Mute rules apply to every thread list; hidden forums also leave New.
 - **Alerts:** opening the tab zeroes the badge and the stored counters and clears the notification.
 - **Notifications and widget:** `WorkScheduler` keeps one periodic `SyncWorker` while notifications are on or a widget is placed (D13).

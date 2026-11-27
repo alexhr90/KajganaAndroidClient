@@ -5,6 +5,9 @@ import com.alexhr90.muabet.data.remote.FetchResult
 import com.alexhr90.muabet.data.remote.ForumFetcher
 import com.alexhr90.muabet.data.remote.WebViewCookieJar
 import com.alexhr90.muabet.domain.model.AlertList
+import com.alexhr90.muabet.domain.model.ConversationList
+import com.alexhr90.muabet.domain.model.ConversationPage
+import com.alexhr90.muabet.domain.model.MemberProfile
 import com.alexhr90.muabet.domain.model.ForumHome
 import com.alexhr90.muabet.domain.model.ForumPage
 import com.alexhr90.muabet.domain.model.SearchPage
@@ -12,7 +15,9 @@ import com.alexhr90.muabet.domain.model.SessionInfo
 import com.alexhr90.muabet.domain.model.ThreadList
 import com.alexhr90.muabet.domain.model.ThreadPage
 import com.alexhr90.muabet.domain.net.BlockKind
+import com.alexhr90.muabet.domain.parse.ConversationParser
 import com.alexhr90.muabet.domain.parse.ForumParser
+import com.alexhr90.muabet.domain.parse.MemberParser
 import com.alexhr90.muabet.domain.parse.HomeParser
 import com.alexhr90.muabet.domain.parse.ListParser
 import com.alexhr90.muabet.domain.parse.ParseException
@@ -92,6 +97,20 @@ class ForumRepository @Inject constructor(
 
     suspend fun search(url: String): Loaded<SearchPage> =
         load(url) { html, finalUrl -> ListParser.search(html, finalUrl).also { note(it.session) } }
+
+    /** Direct messages: the list, or a next page of it. */
+    suspend fun conversations(url: String = ForumUrls.conversations): Loaded<ConversationList> =
+        load(url) { html, finalUrl -> ConversationParser.list(html, finalUrl).also { note(it.session) } }
+
+    /** A conversation page; any of its links (unread, latest, a page) works. */
+    suspend fun conversation(url: String): Loaded<ConversationPage> =
+        load(url) { html, finalUrl -> ConversationParser.page(html, finalUrl).also { note(it.session) } }
+
+    suspend fun member(slug: String, id: Long): Loaded<MemberProfile> =
+        load(ForumUrls.member(slug, id)) { html, finalUrl -> MemberParser.parse(html, finalUrl).also { note(it.session) } }
+
+    /** The visitor's bookmarks: rows like search results. */
+    suspend fun bookmarks(url: String = ForumUrls.bookmarks): Loaded<SearchPage> = search(url)
 
     /** The raw page, for saving a thread page offline. */
     suspend fun raw(url: String): FetchResult = fetcher.get(url)

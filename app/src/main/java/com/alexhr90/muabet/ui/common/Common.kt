@@ -121,6 +121,47 @@ fun rememberCustomTabOpener(context: Context): (String) -> Unit {
     return { url -> openCustomTab(context, url, color) }
 }
 
+/**
+ * Opens a link to another site in that site's own app when one is installed (YouTube, Instagram,
+ * X, Spotify…), otherwise in a Custom Tab. Android 11+ can ask for "an app, not a browser".
+ */
+@Composable
+fun rememberExternalOpener(context: Context): (String) -> Unit {
+    val tab = rememberCustomTabOpener(context)
+    return { url ->
+        val opened = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER),
+            )
+        }.isSuccess
+        if (!opened) tab(url)
+    }
+}
+
+/**
+ * Downloads a forum attachment with the session to Downloads (Android 10+) or the app's download
+ * folder, with the system's notification to open it. No permission is needed.
+ */
+fun downloadFile(context: Context, url: String, name: String): Boolean = runCatching {
+    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+    val request = android.app.DownloadManager.Request(Uri.parse(url))
+        .setTitle(name)
+        .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+    val host = Uri.parse(url).host
+    if (com.alexhr90.muabet.domain.url.ForumUrls.isForumHost(host)) {
+        android.webkit.CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
+    }
+    val safe = name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "download" }
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, safe)
+    } else {
+        request.setDestinationInExternalFilesDir(context, android.os.Environment.DIRECTORY_DOWNLOADS, safe)
+    }
+    dm.enqueue(request)
+}.isSuccess
+
 /** A short message for the screen's message bar: a string resource with an optional number. */
 data class UiMessage(val text: Int, val arg: Int? = null, val undo: (() -> Unit)? = null)
 

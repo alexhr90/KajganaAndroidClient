@@ -195,6 +195,10 @@ class AlertsViewModel @Inject constructor(
     private val notifications: Notifications,
 ) : EndlessViewModel<Alert, com.alexhr90.muabet.domain.model.AlertList>(forum, needsLogin = true) {
     override val firstUrl: String = ForumUrls.alerts
+
+    /** Unread direct messages, for the badge on the messages button. */
+    val messagesUnread: StateFlow<Int> = forum.session.map { it?.conversationsUnread ?: 0 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     override suspend fun fetch(url: String) = forum.alerts(url)
     override fun itemsOf(page: com.alexhr90.muabet.domain.model.AlertList) = page.alerts
     override fun nextOf(page: com.alexhr90.muabet.domain.model.AlertList) = page.nextUrl

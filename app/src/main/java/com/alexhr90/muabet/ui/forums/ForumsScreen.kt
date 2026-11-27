@@ -67,9 +67,10 @@ fun ForumsScreen(
         },
     ) { padding ->
         LoadedContent(state, onRetry = { viewModel.load() }, modifier = Modifier.padding(padding)) { home ->
+            val heading = stringResource(R.string.tab_forums)
             MuabetPullToRefresh(refreshing, onRefresh = { viewModel.load(pull = true) }, modifier = Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = padding.screenContent()) {
-                    pageTitle(stringResource(R.string.tab_forums), hero = true)
+                    pageTitle(heading, hero = true)
                     home.categories.forEachIndexed { index, category ->
                         val key = category.id?.toString() ?: "c$index"
                         val folded = key in collapsed

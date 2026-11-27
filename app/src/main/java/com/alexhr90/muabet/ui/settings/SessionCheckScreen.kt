@@ -48,9 +48,10 @@ fun SessionCheckScreen(
     val yes = stringResource(R.string.yes)
     val no = stringResource(R.string.no)
 
-    ScreenScaffold(title = stringResource(R.string.session_check_title), onBack = onBack) { padding ->
+    val heading = stringResource(R.string.session_check_title)
+    ScreenScaffold(title = heading, onBack = onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = padding.screenContent()) {
-            pageTitle(stringResource(R.string.session_check_title))
+            pageTitle(heading)
             item { NoteCard(stringResource(R.string.session_check_explain)) }
             val c = check
             if (checking || c == null) {

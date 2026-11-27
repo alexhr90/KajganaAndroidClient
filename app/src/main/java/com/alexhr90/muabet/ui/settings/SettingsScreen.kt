@@ -51,9 +51,10 @@ fun SettingsScreen(
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
     val openTab = rememberCustomTabOpener(LocalContext.current)
 
-    ScreenScaffold(title = stringResource(R.string.settings_title), onBack = onBack) { padding ->
+    val heading = stringResource(R.string.settings_title)
+    ScreenScaffold(title = heading, onBack = onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = padding.screenContent()) {
-            pageTitle(stringResource(R.string.settings_title))
+            pageTitle(heading)
 
             item { SectionHeader(stringResource(R.string.settings_account)) }
             item {

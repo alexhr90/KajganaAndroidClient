@@ -1,0 +1,70 @@
+name: Build preview APK
+
+# Opt-in to save Actions minutes: runs only when the pushed commit's message contains [apk]
+# or when started with Run workflow. Replaces the branch's preview/<branch> pre-release.
+on:
+  push:
+    branches: [main, 'claude/**', 'feature/**']
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build the debug APK
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[apk]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Unit tests and debug APK
+        run: ./gradlew test assembleDebug --no-daemon --stacktrace
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+          retention-days: 3
+      - name: Work out the preview tag
+        id: tag
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          TAG="preview/$(echo "$BRANCH" | tr '/' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          for f in app/build/outputs/apk/debug/*.apk; do cp "$f" "dist/Muabet-${GITHUB_SHA::7}.apk"; done
+      # action-gh-release never moves a tag, so delete the old preview first.
+      - name: Delete previous preview release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+      - name: Upload the APK to a pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: "Preview: ${{ steps.tag.outputs.branch }}"
+          body: |
+            Debug APK for sideloading; installs next to the release build.
+            Branch: `${{ steps.tag.outputs.branch }}`, commit `${{ github.sha }}`.
+          prerelease: true
+          files: dist/*.apk
+          fail_on_unmatched_files: true

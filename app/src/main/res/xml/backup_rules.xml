@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and lower. The WebView's data (cookies, so the forum session) and caches are never backed up (SPEC §3). -->
+<full-backup-content>
+    <exclude domain="root" path="app_webview" />
+    <exclude domain="file" path="image_cache" />
+</full-backup-content>

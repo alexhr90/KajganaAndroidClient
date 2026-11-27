@@ -1,0 +1,21 @@
+# Gradle / build
+.gradle/
+build/
+**/build/
+local.properties
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing
+*.jks
+*.keystore
+keystore.properties
+# Shared CI debug key (not a secret) so preview builds install over each other
+!config/debug.keystore

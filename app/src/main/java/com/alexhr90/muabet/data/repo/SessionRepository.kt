@@ -1,7 +1,9 @@
 package com.alexhr90.muabet.data.repo
 
+import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.WebStorage
+import com.alexhr90.muabet.data.local.WatchedCacheDao
 import com.alexhr90.muabet.data.remote.FetchResult
 import com.alexhr90.muabet.data.remote.ForumFetcher
 import com.alexhr90.muabet.data.remote.WebViewCookieJar
@@ -9,6 +11,9 @@ import com.alexhr90.muabet.domain.model.SessionInfo
 import com.alexhr90.muabet.domain.net.BlockKind
 import com.alexhr90.muabet.domain.parse.SessionParser
 import com.alexhr90.muabet.domain.url.ForumUrls
+import com.alexhr90.muabet.notify.Notifications
+import com.alexhr90.muabet.widget.WatchedWidget
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,6 +42,9 @@ class SessionRepository @Inject constructor(
     private val fetcher: ForumFetcher,
     private val cookies: WebViewCookieJar,
     private val forum: ForumRepository,
+    private val watched: WatchedCacheDao,
+    private val notifications: Notifications,
+    @ApplicationContext private val context: Context,
 ) {
     fun cookieNames(): List<String> = cookies.cookieNames()
 
@@ -61,7 +69,10 @@ class SessionRepository @Inject constructor(
         }
     }
 
-    /** Logs out locally: the forum's cookies and the WebView's storage are cleared. */
+    /**
+     * Logs out locally: the forum's cookies and the WebView's storage are cleared, and so are the
+     * widget's watched threads and the alerts notification, which belong to the account.
+     */
     suspend fun logout() {
         suspendCancellableCoroutine { cont ->
             CookieManager.getInstance().removeAllCookies { cont.resume(Unit) }
@@ -69,5 +80,8 @@ class SessionRepository @Inject constructor(
         CookieManager.getInstance().flush()
         WebStorage.getInstance().deleteAllData()
         forum.forget()
+        runCatching { watched.clear() }
+        WatchedWidget.refreshAll(context)
+        notifications.clearAlerts()
     }
 }

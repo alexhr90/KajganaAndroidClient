@@ -3,4 +3,11 @@
     <color name="ic_launcher_background">#101112</color>
     <color name="window_light">#F5F6F0</color>
     <color name="window_dark">#101112</color>
+    <!-- Home-screen widget and notifications. -->
+    <color name="widget_bg">#F5F6F0</color>
+    <color name="widget_text">#1B1C18</color>
+    <color name="widget_muted">#5E6158</color>
+    <color name="widget_accent">#A34300</color>
+    <color name="widget_rule">#E3E5DA</color>
+    <color name="notification_accent">#FF6D10</color>
 </resources>

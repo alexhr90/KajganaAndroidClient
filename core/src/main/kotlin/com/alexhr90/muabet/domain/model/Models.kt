@@ -5,6 +5,10 @@ data class SessionInfo(
     val loggedIn: Boolean,
     val username: String? = null,
     val csrf: String? = null,
+    /** The unread alerts badge in the forum's navigation (read without opening the alerts). */
+    val alertsUnread: Int = 0,
+    /** The unread direct messages badge. */
+    val conversationsUnread: Int = 0,
 ) {
     companion object {
         val Guest = SessionInfo(loggedIn = false)
@@ -94,6 +98,45 @@ data class ThreadSummary(
     val sticky: Boolean = false,
     val locked: Boolean = false,
     val lastPage: Int = 1,
+    /** The forum the thread is in, when the list shows it (New posts, Watched). */
+    val forumId: Long? = null,
+    val forumTitle: String? = null,
+)
+
+/** A list of threads from New posts or Watched threads. [nextUrl] is the next page, if any. */
+data class ThreadList(
+    val threads: List<ThreadSummary>,
+    val page: PageInfo,
+    val session: SessionInfo,
+    val nextUrl: String?,
+)
+
+/** One page of alerts. */
+data class AlertList(
+    val alerts: List<Alert>,
+    val page: PageInfo,
+    val session: SessionInfo,
+    val nextUrl: String?,
+)
+
+/** A search hit: a thread or a post. */
+data class SearchResult(
+    val title: String,
+    val url: String,
+    val snippet: String?,
+    val author: String?,
+    /** Epoch seconds. */
+    val timestamp: Long?,
+    val forumTitle: String?,
+    val threadId: Long?,
+    val postId: Long?,
+)
+
+data class SearchPage(
+    val results: List<SearchResult>,
+    val page: PageInfo,
+    val session: SessionInfo,
+    val nextUrl: String?,
 )
 
 /** One page of a thread. */
@@ -107,6 +150,10 @@ data class ThreadPage(
     val page: PageInfo,
     val session: SessionInfo,
     val canReply: Boolean,
+    /** True when this page came from a copy saved for offline reading, not from the forum. */
+    val fromSaved: Boolean = false,
+    /** True when the logged-in visitor watches the thread. */
+    val watched: Boolean = false,
 )
 
 data class Post(
@@ -120,6 +167,8 @@ data class Post(
     val timeText: String?,
     val body: List<Block>,
     val reactions: ReactionSummary?,
+    /** True when the forum marks the post as new for the logged-in visitor. */
+    val unread: Boolean = false,
 ) {
     /** True when part of the body could not be shown natively: offer "Open on the forum". */
     val hasUnknown: Boolean get() = body.any { it.containsUnknown() }
@@ -133,6 +182,8 @@ data class PostAuthor(
     val title: String? = null,
     /** Label and value pairs in the forum's own words: joined, messages, reaction score, age, location. */
     val details: List<Pair<String, String>> = emptyList(),
+    /** The member's profile page on the forum. */
+    val profileUrl: String? = null,
 )
 
 data class ReactionSummary(
@@ -145,10 +196,12 @@ data class ReactionSummary(
     val listUrl: String?,
 )
 
-/** An alert from /account/alerts (milestone 2). */
+/** An alert from /account/alerts. */
 data class Alert(
     val id: Long,
     val text: String,
+    val author: String?,
+    val avatarUrl: String?,
     val url: String?,
     val unread: Boolean,
     /** Epoch seconds. */

@@ -43,6 +43,9 @@ class WebViewCookieJar : CookieJar {
         }
     }
 
+    /** True when the WebView holds the long-lived login cookie ("Stay logged in"). */
+    fun hasLoginCookie(): Boolean = "xf_user" in cookieNames()
+
     /** The names (never the values) of the forum cookies the WebView holds. */
     fun cookieNames(): List<String> {
         val header = runCatching { manager.getCookie(ForumUrls.home) }.getOrNull() ?: return emptyList()

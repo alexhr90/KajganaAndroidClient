@@ -36,11 +36,12 @@ val screenGround: Color
     @Composable get() = if (LocalBackdrop.current) Color.Transparent else MaterialTheme.colorScheme.background
 
 /**
- * The ground for top, bottom and form bars. Over a backdrop it is transparent, so the scene runs
- * edge to edge behind the bars; content is laid out between the bars and never scrolls under them.
+ * The ground for top, bottom and form bars: the theme background, a touch translucent over a
+ * painted backdrop so the scene still tints it, but opaque enough that text scrolling under a bar
+ * never shows through it (owner's test of v0.1.0).
  */
 val barGround: Color
-    @Composable get() = screenGround
+    @Composable get() = if (LocalBackdrop.current) MaterialTheme.colorScheme.background.copy(alpha = 0.96f) else MaterialTheme.colorScheme.background
 
 /** One painted scene: a sky gradient and soft colour fields that drift. */
 private data class Scene(

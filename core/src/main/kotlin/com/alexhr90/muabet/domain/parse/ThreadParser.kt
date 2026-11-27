@@ -35,7 +35,15 @@ object ThreadParser {
             page = parsePageInfo(doc),
             session = SessionParser.parse(doc),
             canReply = doc.selectFirst("form.js-quickReply, form[action*=add-reply]") != null,
+            watched = isWatched(doc),
         )
+    }
+
+    /** XenForo's watch button shows its `data-sk-unwatch` label while the thread is watched. */
+    private fun isWatched(doc: Document): Boolean {
+        val a = doc.selectFirst("a[href*=/watch][data-sk-unwatch]") ?: return false
+        val unwatch = a.attr("data-sk-unwatch").squash()
+        return unwatch.isNotEmpty() && a.text().squash() == unwatch
     }
 
     fun parsePost(el: Element, base: String = ForumUrls.BASE): Post? {
@@ -59,6 +67,7 @@ object ThreadParser {
             timeText = time?.text()?.squash()?.takeIf { it.isNotEmpty() },
             body = body,
             reactions = parseReactions(el, base),
+            unread = el.hasClass("is-unread") || el.selectFirst(".message-newIndicator") != null,
         )
     }
 
@@ -79,7 +88,9 @@ object ThreadParser {
             val value = dl.selectFirst("dd")?.text()?.squash().orEmpty()
             if (label.isEmpty() && value.isEmpty()) null else label.trimEnd(':') to value
         }.orEmpty()
-        return PostAuthor(name = name, userId = userId, avatarUrl = avatar, title = title, details = details)
+        val profile = (nameLink?.takeIf { it.hasAttr("href") } ?: user?.selectFirst("a[href*=/members/]"))
+            ?.attr("href")?.let { ForumUrls.absolute(it, base) }
+        return PostAuthor(name = name, userId = userId, avatarUrl = avatar, title = title, details = details, profileUrl = profile)
     }
 
     private fun attachments(el: Element, base: String): List<Block> =

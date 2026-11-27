@@ -126,8 +126,11 @@ object BbContent {
                 if (alt.isNotBlank()) text(alt, Style(href = link))
                 return
             }
-            val src = listOf(el.attr("data-url"), el.attr("data-src"), el.attr("src"))
+            // The forum's own copy first (lazy `data-src`, then `src`, which may be the image proxy);
+            // `data-url` is the original address on another site, used only when nothing else is there.
+            val src = listOf(el.attr("data-src"), el.attr("src"), el.attr("data-url"))
                 .firstNotNullOfOrNull { ForumUrls.absolute(it, base) }
+                ?.let(ForumUrls::preferHttps)
                 ?: return
             add(Block.Image(url = src, alt = el.attr("alt").takeIf { it.isNotBlank() }, link = link?.takeIf { it != src }))
         }

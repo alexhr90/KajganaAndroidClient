@@ -4,9 +4,17 @@
     <cloud-backup>
         <exclude domain="root" path="app_webview" />
         <exclude domain="file" path="image_cache" />
+        <!-- Saved pages hold other members' posts: they stay on this phone (SPEC §7). Settings export covers the rest. -->
+        <exclude domain="database" path="muabet.db" />
+        <exclude domain="database" path="muabet.db-wal" />
+        <exclude domain="database" path="muabet.db-shm" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="root" path="app_webview" />
         <exclude domain="file" path="image_cache" />
+        <!-- Saved pages hold other members' posts: they stay on this phone (SPEC §7). Settings export covers the rest. -->
+        <exclude domain="database" path="muabet.db" />
+        <exclude domain="database" path="muabet.db-wal" />
+        <exclude domain="database" path="muabet.db-shm" />
     </device-transfer>
 </data-extraction-rules>

@@ -2,6 +2,7 @@ package com.alexhr90.muabet.domain.parse
 
 import com.alexhr90.muabet.domain.model.PageInfo
 import com.alexhr90.muabet.domain.model.SessionInfo
+import com.alexhr90.muabet.domain.url.ForumUrls
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -36,8 +37,18 @@ object SessionParser {
         }
         val csrf = html?.attr("data-csrf")?.takeIf { it.isNotBlank() }
             ?: doc.selectFirst("input[name=_xfToken]")?.attr("value")?.takeIf { it.isNotBlank() }
-        return SessionInfo(loggedIn = loggedIn, username = name, csrf = csrf)
+        return SessionInfo(
+            loggedIn = loggedIn,
+            username = name,
+            csrf = csrf,
+            alertsUnread = if (loggedIn) badge(doc, ".p-navgroup-link--alerts") else 0,
+            conversationsUnread = if (loggedIn) badge(doc, ".p-navgroup-link--conversations") else 0,
+        )
     }
+
+    /** XenForo shows unread counts as `data-badge` on the navigation links. */
+    private fun badge(doc: Document, selector: String): Int =
+        doc.selectFirst(selector)?.attr("data-badge")?.let(::parseCount) ?: 0
 
     fun parse(html: String, url: String): SessionInfo = parse(parseDocument(html, url))
 }
@@ -52,6 +63,12 @@ internal fun parsePageInfo(doc: Document): PageInfo {
     val jumpMax = doc.selectFirst("input.js-pageJumpPage")?.attr("max")?.toIntOrNull()
     val last = maxOf(numbers.maxOrNull() ?: 1, jumpMax ?: 1, current)
     return PageInfo(current = current.coerceAtLeast(1), last = last)
+}
+
+/** The next page's link from XenForo's page navigation, absolute; null on the last page. */
+internal fun parseNextUrl(doc: Document): String? {
+    val a = doc.selectFirst(".pageNav-jump--next, .pageNavSimple-el--next") ?: return null
+    return ForumUrls.absolute(a.attr("href"), doc.location().ifBlank { ForumUrls.BASE })
 }
 
 private val offsetNoColon = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxx")

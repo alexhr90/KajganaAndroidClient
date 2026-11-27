@@ -4,16 +4,19 @@ A personal, **unofficial** Android client for [forum.kajgana.com](https://forum.
 
 ## Status
 
-**v0.1.0 (M0, foundation and spikes)**, waiting for the first phone test. See `PLAN.md` for the milestones and `docs/DEVICE_TEST.md` for what to check.
+**v1.0.0 (M1 to M4)**, the complete app, waiting for the owner's phone test. See `PLAN.md` for the milestones and `docs/DEVICE_TEST.md` for what to check.
 
-What works in M0:
-
-- **Forums:** the live categories and forums in compact two-line rows; unread forums bolder with an orange dot; categories fold on tap.
-- **Forum:** subforums, pinned threads folded into one row, the thread list with infinite scroll and pull to refresh, a "… p." shortcut to a thread's last page.
-- **Thread:** page by page, with first, previous, a page jump sheet (slider or number), next and last, so a 1,000+ page thread opens anywhere. Posts have a one-line header (details on tap), collapsed quotes, spoilers, images (tap to enlarge), link previews, embeds, code, lists and reactions. Anything not shown natively offers "Open on the forum".
-- **Login:** on the forum's page in a WebView; the app's own requests share its cookies. Settings → **Session check** shows whether that works (cookie names only).
-- **New, Watched, Alerts:** open the forum's own pages until the native lists arrive in v0.3.
-- **Settings:** theme, motion, painted backdrop, log in and out, about.
+- **Forums:** the live categories and forums in compact rows; pin favourites to the top and reorder them, hide forums (with Undo), fold categories (remembered).
+- **Forum:** subforums, pinned threads folded into one row, infinite scroll, pull to refresh, a "… p." shortcut to the last page, New thread. Long-press a thread for first or last page, share, copy link, mute.
+- **Thread:** swipe between pages; the page bar and a jump sheet open any page of a 1,000+ page thread; the position (page and post) is remembered per thread. Each post is a card: the name opens the member card (profile, message, posts), the menu quotes, reacts, bookmarks, copies and shares. Collapsed quotes, spoilers, members' images (tap to zoom, or load on tap), link previews, embeds, code, lists and reactions; anything else offers "Open on the forum".
+- **New, Watched, Alerts:** native lists with endless scroll; unread threads open at the first unread post; an unread badge on Alerts.
+- **Posting:** reply, quote, react, watch, bookmark, new thread and direct messages on the forum's own forms in the app, returning to the thread at your post.
+- **Search:** the whole forum (all or titles only), one thread, or a member's posts.
+- **Mutes:** mute threads and words; muted threads leave every list, posts with a muted word fold to one line.
+- **Offline:** save chosen pages of a thread; they open without a connection.
+- **Notifications** (off by default): new alerts and direct messages, checked every 15 minutes to 3 hours, with quiet hours.
+- **Widget** with your watched threads; forum links open in the app through "Open with" and the share sheet.
+- **Settings:** account (messages, bookmarks, account page, log in and out), text size, row density, theme, motion, backdrop, lists, saved pages storage, backup and restore of your lists and settings, session check.
 - English, Macedonian, German and Russian.
 
 ## Design
@@ -28,7 +31,9 @@ Download `Muabet-v<version>.apk` from [Releases](https://github.com/alexhr90/Kaj
 
 The app builds on GitHub Actions (JDK 17, Gradle 8.14.3). Locally: `./gradlew assembleDebug` with the Android SDK installed. `:core` is plain Kotlin and its tests run anywhere (`AGENTS.md` → Testing).
 
-Project layout: `:core` (forum models, URL routes, HTML parsers, politeness rules, JVM tests with synthetic fixtures) and `:app` (Compose UI, WebView login, OkHttp cookie bridge, design system). Details in `AGENTS.md`.
+Project layout: `:core` (forum models, URL routes, HTML parsers, mute rules, politeness rules, JVM tests with synthetic fixtures) and `:app` (Compose UI, WebView login and forms, OkHttp cookie bridge, Room, WorkManager, widget, design system). Details in `AGENTS.md`.
+
+Strings live in `tools/strings.py` for all four languages; run `python3 tools/strings.py` to regenerate the `strings.xml` files.
 
 ## Releases
 
@@ -42,4 +47,4 @@ changes. A release is published only when the version in `gradle.properties` cha
 
 ## Privacy
 
-Muabet talks only to forum.kajgana.com (and image hosts that posts link to). Forum cookies stay in the WebView's store, are never shown, logged or backed up, and logging out clears them. Pages are requested politely: at most two at a time, one per second, with an honest User-Agent, and the app never works around a bot check.
+Muabet talks only to forum.kajgana.com (and image hosts that posts link to). Forum cookies stay in the WebView's store, are never shown, logged or backed up, and logging out clears them. Permissions: Internet, and notifications only if you turn them on. Everything the app keeps (pins, mutes, read positions, saved pages) stays on the phone and is left out of cloud backups; Settings → Backup writes a file with your lists and settings only. Pages are requested politely: at most two at a time, one per second, with an honest User-Agent, and the app never works around a bot check.

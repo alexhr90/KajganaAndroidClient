@@ -49,6 +49,40 @@ object ForumUrls {
     fun post(id: Long): String = "$BASE/posts/$id/"
     fun reply(slug: String, id: Long): String = "$BASE/threads/${node(slug, id)}/reply"
 
+    /** The reply form with a post quoted in it. */
+    fun quote(slug: String, threadId: Long, postId: Long): String = "${reply(slug, threadId)}?quote=$postId"
+    fun react(postId: Long): String = "$BASE/posts/$postId/react"
+    fun bookmarkPost(postId: Long): String = "$BASE/posts/$postId/bookmark"
+    fun watchThread(slug: String, id: Long): String = "$BASE/threads/${node(slug, id)}/watch"
+    fun postThread(slug: String, forumId: Long): String = "$BASE/forums/${node(slug, forumId)}/post-thread"
+    /** A new direct message to [username]. */
+    fun messageTo(username: String): String = "$BASE/direct-messages/add?to=" + java.net.URLEncoder.encode(username, "UTF-8")
+
+    /** Everything a member posted, newest first. */
+    fun postsBy(userId: Long): String = "$BASE/search/member?user_id=$userId"
+
+    fun member(slug: String, id: Long): String = "$BASE/members/${node(slug, id)}/"
+
+    /**
+     * A search, newest first. XenForo answers the GET with a redirect to its stored result
+     * (`/search/<id>/?q=...`), whose pages the result page links to itself. [threadId] limits the
+     * search to one thread.
+     */
+    fun search(keywords: String, threadId: Long? = null, titlesOnly: Boolean = false): String {
+        val q = java.net.URLEncoder.encode(keywords.trim(), "UTF-8")
+        val sb = StringBuilder("$BASE/search/search?keywords=$q&o=date")
+        if (threadId != null) sb.append("&c%5Bthread%5D=$threadId")
+        if (titlesOnly) sb.append("&c%5Btitle_only%5D=1")
+        return sb.toString()
+    }
+
+    /** [url] on the forum host moved to https (the forum is https only); other sites unchanged. */
+    fun preferHttps(url: String): String {
+        if (!url.startsWith("http://", ignoreCase = true)) return url
+        val host = runCatching { URI(url).host }.getOrNull()
+        return if (isForumHost(host)) "https://" + url.substring(7) else url
+    }
+
     private fun node(slug: String, id: Long) = if (slug.isBlank()) "$id" else "$slug.$id"
     private fun pageSuffix(page: Int) = if (page > 1) "page-$page" else ""
 

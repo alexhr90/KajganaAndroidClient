@@ -74,6 +74,7 @@ object ThreadRowParser {
         val lastPage = el.select(".structItem-pageJump a").mapNotNull { a ->
             ForumUrls.pageOf(a.attr("href")) ?: a.text().trim().toIntOrNull()
         }.maxOrNull() ?: 1
+        val forumLink = el.select(".structItem-parts a[href*=/forums/], .structItem-minor a[href*=/forums/]").lastOrNull()
         return ThreadSummary(
             id = id,
             slug = slug,
@@ -89,6 +90,8 @@ object ThreadRowParser {
             sticky = inStickyGroup || "structItem-status--sticky" in statuses,
             locked = "structItem-status--locked" in statuses,
             lastPage = lastPage,
+            forumId = ForumUrls.slugAndId(forumLink?.attr("href"), "forums")?.second,
+            forumTitle = forumLink?.text()?.squash()?.takeIf { it.isNotEmpty() },
         )
     }
 }

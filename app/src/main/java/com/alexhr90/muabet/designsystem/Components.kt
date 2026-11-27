@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
@@ -620,7 +621,8 @@ fun InfoRow(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
+            // The label keeps its words; a long value wraps beside it instead of squeezing it.
+            modifier = Modifier.widthIn(max = 180.dp)
         )
         Spacer(Modifier.width(Space.m))
         Text(
@@ -628,8 +630,9 @@ fun InfoRow(
             style = valueStyle.copy(fontWeight = FontWeight.Medium),
             color = valueColor,
             textAlign = TextAlign.End,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
     }
 }

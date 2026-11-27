@@ -32,6 +32,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.alexhr90.muabet.R
 import com.alexhr90.muabet.designsystem.ScreenScaffold
 import com.alexhr90.muabet.domain.url.ForumUrls
+import com.alexhr90.muabet.domain.url.Route
 import com.alexhr90.muabet.ui.common.rememberCustomTabOpener
 
 /**
@@ -49,6 +50,8 @@ fun WebScreen(
     onBack: () -> Unit,
     loginMode: Boolean = false,
     onLoggedIn: () -> Unit = {},
+    /** For forms (reply, quote, react, watch, new thread): called with the thread page the form led to. */
+    onNativeTarget: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val openTab = rememberCustomTabOpener(context)
@@ -58,6 +61,8 @@ fun WebScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
     val done by rememberUpdatedState(onLoggedIn)
+    val native by rememberUpdatedState(onNativeTarget)
+    var handedBack by remember { mutableStateOf(false) }
     val externalTab by rememberUpdatedState(openTab)
 
     BackHandler(enabled = canGoBack) { webView?.goBack() }
@@ -98,6 +103,16 @@ fun WebScreen(
 
                             override fun onPageStarted(view: WebView, pageUrl: String?, favicon: Bitmap?) {
                                 current = pageUrl ?: current
+                                // A form that led to a thread or post: show it natively (SPEC §4 M2).
+                                val back = native
+                                if (back != null && !handedBack && pageUrl != null && pageUrl != url) {
+                                    val r = ForumUrls.route(pageUrl)
+                                    if (r is Route.Thread || r is Route.Post) {
+                                        handedBack = true
+                                        view.stopLoading()
+                                        back(pageUrl)
+                                    }
+                                }
                             }
 
                             override fun onPageFinished(view: WebView, pageUrl: String?) {

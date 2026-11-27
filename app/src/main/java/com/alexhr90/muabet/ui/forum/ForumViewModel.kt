@@ -12,6 +12,16 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.alexhr90.muabet.R
+import com.alexhr90.muabet.data.repo.LibraryRepository
+import com.alexhr90.muabet.domain.filter.MuteRules
+import com.alexhr90.muabet.ui.common.UiMessage
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -31,7 +41,22 @@ data class ForumList(
 class ForumViewModel @Inject constructor(
     saved: SavedStateHandle,
     private val forum: ForumRepository,
+    private val library: LibraryRepository,
 ) : ViewModel() {
+    /** Muted threads and keywords never appear (SPEC §4 M3). */
+    val rules: StateFlow<MuteRules> = library.rules.stateIn(viewModelScope, SharingStarted.Eagerly, MuteRules.None)
+
+    val loggedIn: StateFlow<Boolean> = forum.session.map { it?.loggedIn == true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    private val _messages = MutableSharedFlow<UiMessage>(extraBufferCapacity = 4)
+    val messages: SharedFlow<UiMessage> = _messages.asSharedFlow()
+
+    fun mute(t: ThreadSummary) = viewModelScope.launch {
+        library.muteThread(t.id, t.title)
+        _messages.tryEmit(UiMessage(R.string.msg_thread_muted, undo = { viewModelScope.launch { library.unmuteThread(t.id) } }))
+    }
+
     val forumId: Long = checkNotNull(saved.get<Long>("id"))
     val slug: String = saved.get<String>("slug").orEmpty()
     val initialTitle: String = saved.get<String>("title").orEmpty()

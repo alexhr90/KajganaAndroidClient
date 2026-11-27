@@ -1,8 +1,10 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package com.alexhr90.muabet.designsystem
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -24,7 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -38,6 +44,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -78,9 +85,13 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import androidx.compose.foundation.border
+import androidx.compose.ui.unit.Dp
 import com.alexhr90.muabet.R
 import com.alexhr90.muabet.domain.model.Block
 import com.alexhr90.muabet.domain.model.Post
+import com.alexhr90.muabet.domain.model.PostAuthor
 import com.alexhr90.muabet.domain.model.ReactionSummary
 import com.alexhr90.muabet.domain.model.Run
 import java.net.URI
@@ -107,15 +118,18 @@ fun ForumRow(
     unread: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
+    val compact = LocalCompactRows.current
     Column(modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .clickable(onClick = onClick, role = Role.Button)
-                .padding(vertical = Space.m),
+                .heightIn(min = if (compact) 48.dp else 56.dp)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClickLabel, role = Role.Button)
+                .padding(vertical = if (compact) Space.s else Space.m),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -163,14 +177,17 @@ fun ThreadRow(
     locked: Boolean = false,
     pagesLabel: String? = null,
     onPages: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
 ) {
+    val compact = LocalCompactRows.current
     Column(modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .clickable(onClick = onClick, role = Role.Button)
-                .padding(vertical = Space.m),
+                .heightIn(min = if (compact) 52.dp else 64.dp)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClickLabel, role = Role.Button)
+                .padding(vertical = if (compact) Space.s else Space.m),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -184,7 +201,7 @@ fun ThreadRow(
                     },
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal),
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 3,
+                    maxLines = if (compact) 2 else 3,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -227,16 +244,19 @@ private fun SmallIcon(icon: ImageVector, description: String) {
     Spacer(Modifier.width(Space.xs))
 }
 
-/** Hooks a post's content up to the app: links, images and the "open on the forum" fallback. */
+/** Hooks a post's content up to the app: links, images, the author card, the post menu and the fallback. */
 data class PostActions(
     val onLink: (String) -> Unit,
     val onImage: (String) -> Unit,
     val onOpenOnForum: () -> Unit,
+    val onAuthor: (PostAuthor) -> Unit = {},
+    val onMore: (Post) -> Unit = {},
 )
 
 /**
- * One post: a one-line header (avatar, name, time, number; details on tap), the body as blocks,
- * and the reaction summary. Open layout: the post sits on the ground with a rule below.
+ * One post on its own glass card (owner's test of v0.1.0: posts need clear separation): a
+ * one-line header (avatar, name, time, number) where the name opens the member card, the body as
+ * blocks, and the reactions with the post menu.
  */
 @Composable
 fun PostItem(
@@ -244,72 +264,109 @@ fun PostItem(
     actions: PostActions,
     modifier: Modifier = Modifier,
     time: String? = null,
+    highlighted: Boolean = false,
 ) {
-    var details by rememberSaveable(post.id) { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth().padding(vertical = Space.m)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(MaterialTheme.shapes.small)
-                .clickable(role = Role.Button) { details = !details }
-                .heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Avatar(post.author.avatarUrl, post.author.name)
-            Spacer(Modifier.width(Space.m))
-            Text(
-                post.author.name,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            val shownTime = time ?: post.timeText
-            if (shownTime != null) {
-                Text(
-                    "  ·  $shownTime",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+    val accent = MaterialTheme.colorScheme.primary
+    Column(
+        modifier
+            .fillMaxWidth()
+            .glass(MaterialTheme.shapes.large)
+            .then(if (highlighted) Modifier.border(1.5.dp, accent.copy(alpha = 0.7f), MaterialTheme.shapes.large) else Modifier)
+            .padding(start = Space.l, end = Space.xs, top = Space.xs, bottom = Space.s),
+    ) {
+        val authorLabel = stringResource(R.string.cd_member_card, post.author.name)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .weight(1f)
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable(role = Role.Button, onClickLabel = authorLabel) { actions.onAuthor(post.author) }
+                    .heightIn(min = 48.dp)
+                    .padding(end = Space.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Avatar(post.author.avatarUrl, post.author.name)
+                Spacer(Modifier.width(Space.m))
+                Column(Modifier.weight(1f, fill = false)) {
+                    Text(
+                        post.author.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val shownTime = time ?: post.timeText
+                    val sub = listOfNotNull(post.author.title, shownTime).joinToString("  ·  ")
+                    if (sub.isNotEmpty()) {
+                        Text(
+                            sub,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
-            Spacer(Modifier.weight(1f))
+            if (post.unread) {
+                StatusPill(stringResource(R.string.post_new), Tone.Accent, Modifier.padding(end = Space.xs))
+            }
             post.number?.let {
                 Text("#$it", style = MaterialTheme.typography.labelMedium.numeric, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        }
-        if (details) {
-            Column(Modifier.padding(start = 44.dp, top = Space.xs, bottom = Space.s)) {
-                post.author.title?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
-                post.author.details.forEach { (label, value) -> InfoRow(label, value) }
+            IconButton(onClick = { actions.onMore(post) }) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.cd_post_menu), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Spacer(Modifier.height(Space.s))
-        BlockList(post.body, actions)
-        if (post.hasUnknown) {
-            Text(
-                stringResource(R.string.post_partly_unsupported),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(MaterialTheme.shapes.small)
-                    .clickable(onClick = actions.onOpenOnForum, role = Role.Button)
-                    .heightIn(min = 48.dp)
-                    .padding(vertical = Space.m),
-            )
-        }
-        post.reactions?.let {
-            Spacer(Modifier.height(Space.s))
-            ReactionSummaryRow(it)
+        Column(Modifier.padding(end = Space.m)) {
+            Spacer(Modifier.height(Space.xs))
+            BlockList(post.body, actions)
+            if (post.hasUnknown) {
+                Text(
+                    stringResource(R.string.post_partly_unsupported),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable(onClick = actions.onOpenOnForum, role = Role.Button)
+                        .heightIn(min = 48.dp)
+                        .padding(vertical = Space.m),
+                )
+            }
+            post.reactions?.let {
+                Spacer(Modifier.height(Space.m))
+                ReactionSummaryRow(it, onClick = it.listUrl?.let { url -> { actions.onLink(url) } })
+            }
         }
     }
-    Rule()
+}
+
+/** A post hidden by a muted keyword: one quiet line that shows it on tap. */
+@Composable
+fun MutedPostItem(author: String, onShow: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .glass(MaterialTheme.shapes.large)
+            .clickable(onClick = onShow, role = Role.Button)
+            .heightIn(min = 56.dp)
+            .padding(horizontal = Space.l),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.VisibilityOff, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(Space.m))
+        Text(
+            stringResource(R.string.post_muted, author),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(stringResource(R.string.action_show), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+    }
 }
 
 @Composable
-private fun Avatar(url: String?, name: String) {
-    val size = 32.dp
+fun Avatar(url: String?, name: String, size: Dp = 36.dp) {
     if (url != null) {
         AsyncImage(
             model = url,
@@ -321,9 +378,89 @@ private fun Avatar(url: String?, name: String) {
         Box(Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
             Text(
                 name.firstOrNull()?.uppercase() ?: "?",
-                style = MaterialTheme.typography.labelLarge,
+                style = if (size > 48.dp) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
+        }
+    }
+}
+
+/**
+ * The member card (owner's test of v0.1.0: names open a card, not an accordion): avatar, name,
+ * title and the forum's details, with the profile, a direct message and their posts.
+ */
+@Composable
+fun MemberSheet(
+    author: PostAuthor,
+    loggedIn: Boolean,
+    onProfile: () -> Unit,
+    onMessage: () -> Unit,
+    onPosts: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = floatingGround) {
+        SheetBody {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(author.avatarUrl, author.name, size = 64.dp)
+                Spacer(Modifier.width(Space.l))
+                Column(Modifier.weight(1f)) {
+                    Text(author.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    author.title?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
+                }
+            }
+            if (author.details.isNotEmpty()) {
+                Column {
+                    author.details.forEach { (label, value) -> InfoRow(label, value) }
+                }
+            }
+            if (author.profileUrl != null) {
+                PrimaryPill(stringResource(R.string.member_profile), onClick = onProfile, modifier = Modifier.fillMaxWidth())
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.fillMaxWidth()) {
+                if (loggedIn) OutlinedPill(stringResource(R.string.member_message), onMessage, Modifier.weight(1f))
+                if (author.userId != null) OutlinedPill(stringResource(R.string.member_posts), onPosts, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** One action in a menu sheet: an icon and a label, the whole row is the target. */
+data class SheetAction(val label: String, val icon: ImageVector, val tone: Tone = Tone.Neutral, val onClick: () -> Unit)
+
+/** A bottom sheet of actions (post menu, forum and thread long-press). */
+@Composable
+fun ActionSheet(title: String?, actions: List<SheetAction>, onDismiss: () -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = floatingGround) {
+        Column(Modifier.fillMaxWidth().padding(bottom = Space.xl)) {
+            if (title != null) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = Space.xl).padding(bottom = Space.s),
+                )
+            }
+            actions.forEach { a ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button) {
+                            onDismiss()
+                            a.onClick()
+                        }
+                        .heightIn(min = 56.dp)
+                        .padding(horizontal = Space.xl),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val tint = if (a.tone == Tone.Negative) a.tone.color() else MaterialTheme.colorScheme.onSurface
+                    Icon(a.icon, contentDescription = null, tint = tint)
+                    Spacer(Modifier.width(Space.l))
+                    Text(a.label, style = MaterialTheme.typography.bodyLarge, color = tint)
+                }
+            }
         }
     }
 }
@@ -345,17 +482,7 @@ private fun BlockView(block: Block, actions: PostActions) {
             color = MaterialTheme.colorScheme.onSurface,
         )
         is Block.Quote -> QuoteBlock(block.author, block.blocks, actions)
-        is Block.Image -> AsyncImage(
-            model = block.url,
-            contentDescription = block.alt,
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp, max = 520.dp)
-                .clip(MaterialTheme.shapes.small)
-                .background(glassColor)
-                .clickable(role = Role.Image) { actions.onImage(block.link ?: block.url) },
-        )
+        is Block.Image -> PostImage(block, actions)
         is Block.Link -> LinkLine(block.title ?: block.url, hostOf(block.url), Icons.Rounded.Link) { actions.onLink(block.url) }
         is Block.Embed -> LinkLine(
             embedLabel(block.site),
@@ -388,6 +515,40 @@ private fun BlockView(block: Block, actions: PostActions) {
         }
         is Block.Unknown -> Unit // The post shows one "open on the forum" line for all of these.
     }
+}
+
+/**
+ * A post image at full width. With "load images on tap" it waits behind a placeholder; an image
+ * that fails to load says so and opens on tap, never an empty gap.
+ */
+@Composable
+private fun PostImage(block: Block.Image, actions: PostActions) {
+    val onTap = LocalImagesOnTap.current
+    var revealed by rememberSaveable(block.url) { mutableStateOf(!onTap) }
+    if (!revealed) {
+        LinkLine(stringResource(R.string.image_tap_to_load), block.alt ?: hostOf(block.url), Icons.Outlined.Image) { revealed = true }
+        return
+    }
+    SubcomposeAsyncImage(
+        model = block.url,
+        contentDescription = block.alt,
+        contentScale = ContentScale.FillWidth,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 560.dp)
+            .clip(MaterialTheme.shapes.small)
+            .clickable(role = Role.Image, onClickLabel = stringResource(R.string.cd_enlarge_image)) { actions.onImage(block.link ?: block.url) },
+        loading = {
+            Box(Modifier.fillMaxWidth().height(160.dp).background(glassColor), contentAlignment = Alignment.Center) {
+                LogoLoader(Modifier.size(28.dp))
+            }
+        },
+        error = {
+            LinkLine(stringResource(R.string.image_failed), block.alt ?: hostOf(block.url), Icons.Outlined.BrokenImage) {
+                actions.onLink(block.link ?: block.url)
+            }
+        },
+    )
 }
 
 @Composable
@@ -539,9 +700,17 @@ fun runsToAnnotated(runs: List<Run>, onLink: (String) -> Unit): AnnotatedString 
 
 /** Reactions as icons with the total, the forum's own reaction names read aloud. */
 @Composable
-fun ReactionSummaryRow(summary: ReactionSummary, modifier: Modifier = Modifier) {
+fun ReactionSummaryRow(summary: ReactionSummary, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val description = stringResource(R.string.cd_reactions, summary.total, summary.names.joinToString(", "))
-    Row(modifier.semantics(mergeDescendants = true) { contentDescription = description }, verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick, role = Role.Button) else Modifier)
+            .heightIn(min = 32.dp)
+            .padding(horizontal = Space.xs)
+            .semantics(mergeDescendants = true) { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         val icons = summary.reactionIds.ifEmpty { listOf(1) }.take(3)
         icons.forEachIndexed { i, id ->
             Icon(
@@ -554,6 +723,16 @@ fun ReactionSummaryRow(summary: ReactionSummary, modifier: Modifier = Modifier) 
         }
         Spacer(Modifier.width(Space.xs))
         Text("${summary.total}", style = MaterialTheme.typography.labelMedium.numeric, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (summary.names.isNotEmpty()) {
+            Spacer(Modifier.width(Space.s))
+            Text(
+                summary.names.distinct().joinToString(", "),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

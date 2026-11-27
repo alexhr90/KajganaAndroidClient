@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The forum is served over https only, and the app never talks to it in cleartext. Images that
+  members embed from other sites are sometimes plain http; they may load (D11).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">kajgana.com</domain>
+    </domain-config>
+</network-security-config>
